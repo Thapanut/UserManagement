@@ -3,6 +3,7 @@
 เอกสารประกอบการส่งแบบทดสอบตำแหน่ง Backend Engineer ครอบคลุมการพัฒนาระบบ User Management API ด้วยภาษา Go และข้อเสนอการออกแบบเชิงสถาปัตยกรรมสำหรับระบบค้นหาสลากกินแบ่ง (Lottery Search System)
 
 โปรเจกต์ประกอบด้วย 2 ส่วนหลัก:
+
 1. **User Management API**: RESTful API และ gRPC Service พัฒนาด้วย Golang, ใช้ MongoDB ในการจัดเก็บข้อมูล, ยืนยันตัวตนด้วย JWT (HS256), วางโครงสร้างแบบ Hexagonal Architecture (Ports and Adapters), มี Background Concurrency Task และชุด Unit Tests
 2. **Lottery Search System**: ข้อเสนอการออกแบบสถาปัตยกรรมระบบค้นหาและจัดสรรสลาก 10 ล้านใบ ด้วย Wildcard Pattern Matching แบบเรียลไทม์ พร้อมกลไกป้องกันการเลือกเลขซ้ำซ้อนในสภาวะ Concurrency สูง (เอกสารฉบับเต็ม: [ภาษาไทย (LOTTERY_SEARCH_DESIGN_TH.md)](LOTTERY_SEARCH_DESIGN_TH.md) | [English (LOTTERY_SEARCH_DESIGN.md)](LOTTERY_SEARCH_DESIGN.md))
 
@@ -11,6 +12,7 @@
 ## สรุปข้อกำหนดและการพัฒนา (Implementation Overview)
 
 ### 1. User Management API (Part 1)
+
 - **User Entity Model**: กำหนดโครงสร้าง Entity ครบถ้วนตามโจทย์ (`ID`, `Name`, `Email`, `Password` แบบ Bcrypt Hash, `CreatedAt`)
 - **Authentication & Security**:
   - ระบบสมัครสมาชิก (Register) พร้อม Input Validation ตรวจสอบรูปแบบอีเมลตามมาตรฐาน RFC 5322 และความยาวรหัสผ่าน
@@ -28,6 +30,7 @@
 - **Testing**: ชุด Unit Tests ด้วย Go Standard `testing` package ร่วมกับ In-Memory Mock Repository โดยไม่ต้องพึ่งพา External Database จริง
 
 ### 2. ข้อกำหนดเพิ่มเติม (Bonus Implementations)
+
 - **Containerization**: พัฒนา `Dockerfile` แบบ Multi-Stage Build (Minimal Runtime) และ `docker-compose.yml` รองรับการรัน API คู่กับ MongoDB
 - **Hexagonal Architecture**: แยก Layer อย่างอิสระ (Domain, Repository, Service, Transport) ผ่าน Go Interfaces เพื่อความยืดหยุ่นในการขยายระบบ
 - **Input Validation**: ตรวจสอบความถูกต้องของข้อมูลทุก Endpoint ป้องกันข้อผิดพลาดตั้งแต่ Transport Layer
@@ -99,6 +102,7 @@
 ### ทางเลือกที่ 1: รันด้วย Docker Compose (แนะนำ)
 
 สั่งเปิดระบบทั้ง MongoDB และ API ด้วยคำสั่งเดียว:
+
 ```bash
 docker-compose up -d --build
 ```
@@ -109,11 +113,13 @@ docker-compose up -d --build
 - **MongoDB**: `localhost:27017`
 
 ตรวจสอบการทำงานของระบบ:
+
 ```bash
 docker-compose logs -f api
 ```
 
 หยุดการทำงานของ Container:
+
 ```bash
 docker-compose down
 ```
@@ -123,23 +129,30 @@ docker-compose down
 ### ทางเลือกที่ 2: รันบนเครื่อง Local
 
 #### ข้อกำหนดเบื้องต้น (Prerequisites):
+
 - Go 1.24+
 - MongoDB instance เปิดทำงานอยู่ที่ `mongodb://localhost:27017`
 
 #### 1. สตาร์ท REST API Server:
+
 ```bash
 go run ./cmd/api
 ```
+
 หรือใช้คำสั่งผ่าน Makefile:
+
 ```bash
 make run
 ```
 
 #### 2. สตาร์ท gRPC Server (ทางเลือก):
+
 ```bash
 go run ./cmd/grpc
 ```
+
 หรือ:
+
 ```bash
 make run-grpc
 ```
@@ -153,12 +166,15 @@ make run-grpc
 ```bash
 go test -v -race ./...
 ```
+
 หรือรันผ่าน Makefile:
+
 ```bash
 make test
 ```
 
 ผลการทดสอบ:
+
 ```text
 === RUN   TestRegister_Success
 --- PASS: TestRegister_Success (0.07s)
@@ -207,6 +223,7 @@ ok      backend-challenge/internal/transport/http
 ## ข้อมูลจำเพาะของ JWT Authentication
 
 ### 1. โครงสร้างและการสร้าง Token
+
 - Token ออกให้เมื่อผู้ใช้ยืนยันตัวตนสำเร็จผ่าน `POST /api/v1/auth/login`
 - Algorithm: **HMAC-SHA256 (`HS256`)** ลงนามด้วย `JWT_SECRET`
 - ข้อมูลใน Claims:
@@ -217,7 +234,9 @@ ok      backend-challenge/internal/transport/http
   - `iss`: ผู้ออก Token (`backend-challenge-api`)
 
 ### 2. การเรียกใช้ Protected Endpoints
+
 นำ Token แนบไปกับ HTTP Request Header:
+
 ```http
 Authorization: Bearer <JWT_TOKEN>
 ```
@@ -231,10 +250,13 @@ Authorization: Bearer <JWT_TOKEN>
 > สามารถเปิดทดสอบและดู Schema แบบ Interactive ผ่าน **Swagger UI** ได้โดยตรงที่: **`http://localhost:8080/swagger`** (พร้อมปุ่ม Authorize สำหรับทดสอบ Protected Endpoints ด้วย JWT Token)
 
 ### 1. Health Check
+
 ```bash
 curl -s http://localhost:8080/health
 ```
+
 **Response (200 OK):**
+
 ```json
 {
   "success": true,
@@ -248,6 +270,7 @@ curl -s http://localhost:8080/health
 ---
 
 ### 2. สมัครสมาชิก (User Registration)
+
 ```bash
 curl -s -X POST http://localhost:8080/api/v1/auth/register \
   -H "Content-Type: application/json" \
@@ -257,7 +280,9 @@ curl -s -X POST http://localhost:8080/api/v1/auth/register \
     "password": "password123"
   }'
 ```
+
 **Response (201 Created):**
+
 ```json
 {
   "success": true,
@@ -274,6 +299,7 @@ curl -s -X POST http://localhost:8080/api/v1/auth/register \
 ---
 
 ### 3. เข้าสู่ระบบ (User Login)
+
 ```bash
 curl -s -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
@@ -282,7 +308,9 @@ curl -s -X POST http://localhost:8080/api/v1/auth/login \
     "password": "password123"
   }'
 ```
+
 **Response (200 OK):**
+
 ```json
 {
   "success": true,
@@ -302,11 +330,14 @@ curl -s -X POST http://localhost:8080/api/v1/auth/login \
 ---
 
 ### 4. ดึงรายชื่อผู้ใช้ทั้งหมด (List Users) [Protected]
+
 ```bash
 curl -s -X GET http://localhost:8080/api/v1/users \
   -H "Authorization: Bearer $TOKEN"
 ```
+
 **Response (200 OK):**
+
 ```json
 {
   "success": true,
@@ -325,11 +356,14 @@ curl -s -X GET http://localhost:8080/api/v1/users \
 ---
 
 ### 5. ดึงข้อมูลผู้ใช้ตาม ID (Get User by ID) [Protected]
+
 ```bash
 curl -s -X GET http://localhost:8080/api/v1/users/67da34fb879a957c129486c0 \
   -H "Authorization: Bearer $TOKEN"
 ```
+
 **Response (200 OK):**
+
 ```json
 {
   "success": true,
@@ -346,6 +380,7 @@ curl -s -X GET http://localhost:8080/api/v1/users/67da34fb879a957c129486c0 \
 ---
 
 ### 6. ปรับปรุงข้อมูลผู้ใช้ (Update User) [Protected]
+
 ```bash
 curl -s -X PUT http://localhost:8080/api/v1/users/67da34fb879a957c129486c0 \
   -H "Authorization: Bearer $TOKEN" \
@@ -355,7 +390,9 @@ curl -s -X PUT http://localhost:8080/api/v1/users/67da34fb879a957c129486c0 \
     "email": "somchai.new@example.com"
   }'
 ```
+
 **Response (200 OK):**
+
 ```json
 {
   "success": true,
@@ -372,11 +409,14 @@ curl -s -X PUT http://localhost:8080/api/v1/users/67da34fb879a957c129486c0 \
 ---
 
 ### 7. ลบผู้ใช้ (Delete User) [Protected]
+
 ```bash
 curl -s -X DELETE http://localhost:8080/api/v1/users/67da34fb879a957c129486c0 \
   -H "Authorization: Bearer $TOKEN"
 ```
+
 **Response (200 OK):**
+
 ```json
 {
   "success": true,
@@ -392,17 +432,22 @@ curl -s -X DELETE http://localhost:8080/api/v1/users/67da34fb879a957c129486c0 \
 ระบบเปิดให้บริการ gRPC Server บนพอร์ต **`50051`** ควบคู่ไปกับ REST API พร้อมเปิดใช้งาน **gRPC Server Reflection** ทำให้สามารถใช้เครื่องมือทดสอบ เช่น `grpcurl` หรือ Postman (gRPC Mode) เรียกใช้งานและสำรวจ Schema ได้ทันทีโดยไม่ต้องโหลดไฟล์ `.proto` ด้วยตนเอง
 
 ### 1. เครื่องมือทดสอบ (Installation)
+
 ติดตั้ง `grpcurl` ผ่าน Homebrew:
+
 ```bash
 brew install grpcurl
 ```
 
 ### 2. ตรวจสอบ Services และ Methods (Service Discovery)
+
 ```bash
 # ตรวจสอบ Services ที่เปิดให้บริการ
 grpcurl -plaintext localhost:50051 list
 ```
+
 **ผลลัพธ์:**
+
 ```text
 grpc.reflection.v1.ServerReflection
 grpc.reflection.v1alpha.ServerReflection
@@ -413,7 +458,9 @@ user.UserService
 # ตรวจสอบ Methods ภายใต้ user.UserService
 grpcurl -plaintext localhost:50051 list user.UserService
 ```
+
 **ผลลัพธ์:**
+
 ```text
 user.UserService.CreateUser
 user.UserService.DeleteUser
@@ -433,7 +480,9 @@ grpcurl -plaintext \
   -d '{"name": "Somchai Jaidee", "email": "somchai_grpc@example.com", "password": "password123"}' \
   localhost:50051 user.UserService/CreateUser
 ```
+
 **ผลลัพธ์ (Response):**
+
 ```json
 {
   "id": "6aacb46c71edc7877f277dae",
@@ -448,19 +497,24 @@ grpcurl -plaintext \
 ### 4. จุดที่ 2: การดึงข้อมูลผู้ใช้ (GetUser & ListUsers - R) [Protected]
 
 > **หมายเหตุ:** สำหรับ Endpoint ที่ได้รับการปกป้อง ต้องเข้าสู่ระบบผ่าน REST API (`POST /api/v1/auth/login`) เพื่อรับ JWT Token ก่อน แล้วนำมาเก็บในตัวแปร Environment:
+>
 > ```bash
 > export TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 > ```
 
 #### 4.1 ดึงข้อมูลผู้ใช้ตาม ID (GetUser)
+
 แนบ Token ผ่าน Metadata Header `authorization`:
+
 ```bash
 grpcurl -plaintext \
   -H "authorization: Bearer $TOKEN" \
   -d '{"id": "6aacb46c71edc7877f277dae"}' \
   localhost:50051 user.UserService/GetUser
 ```
+
 **ผลลัพธ์ (Response):**
+
 ```json
 {
   "id": "6aacb46c71edc7877f277dae",
@@ -471,12 +525,15 @@ grpcurl -plaintext \
 ```
 
 #### 4.2 ดึงรายชื่อผู้ใช้ทั้งหมด (ListUsers)
+
 ```bash
 grpcurl -plaintext \
   -H "authorization: Bearer $TOKEN" \
   localhost:50051 user.UserService/ListUsers
 ```
+
 **ผลลัพธ์ (Response):**
+
 ```json
 {
   "users": [
@@ -506,7 +563,9 @@ grpcurl -plaintext \
   }' \
   localhost:50051 user.UserService/UpdateUser
 ```
+
 **ผลลัพธ์ (Response):**
+
 ```json
 {
   "id": "6aacb46c71edc7877f277dae",
@@ -528,7 +587,9 @@ grpcurl -plaintext \
   -d '{"id": "6aacb46c71edc7877f277dae"}' \
   localhost:50051 user.UserService/DeleteUser
 ```
+
 **ผลลัพธ์ (Response):**
+
 ```json
 {
   "success": true,
@@ -542,12 +603,12 @@ grpcurl -plaintext \
 
 gRPC Server ส่งกลับมาตรฐาน Status Codes ตามข้อกำหนดของ gRPC:
 
-| กรณีทดสอบ | สถานะ gRPC Code | คำสั่งทดสอบ | ผลลัพธ์ที่ได้รับ |
-| :--- | :--- | :--- | :--- |
-| **ไม่มี Token** | `Unauthenticated (16)` | `grpcurl -plaintext -d '{"id": "..."}' localhost:50051 user.UserService/GetUser` | `ERROR: Code: Unauthenticated, Message: authorization token is not provided` |
-| **ไม่พบข้อมูล** | `NotFound (5)` | `grpcurl -plaintext -H "authorization: Bearer $TOKEN" -d '{"id": "6aacb46c71edc7877f277dae"}' localhost:50051 user.UserService/GetUser` | `ERROR: Code: NotFound, Message: user not found` |
-| **รูปแบบ ID ผิด** | `InvalidArgument (3)` | `grpcurl -plaintext -H "authorization: Bearer $TOKEN" -d '{"id": "invalid-id"}' localhost:50051 user.UserService/GetUser` | `ERROR: Code: InvalidArgument, Message: invalid user id format` |
-| **อีเมลซ้ำ** | `AlreadyExists (6)` | `grpcurl -plaintext -d '{"name": "...", "email": "somchai_grpc@example.com", ...}' localhost:50051 user.UserService/CreateUser` | `ERROR: Code: AlreadyExists, Message: email already exists` |
+| กรณีทดสอบ               | สถานะ gRPC Code     | คำสั่งทดสอบ                                                                                                                    | ผลลัพธ์ที่ได้รับ                                               |
+| :------------------------------- | :----------------------- | :---------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------- |
+| **ไม่มี Token**       | `Unauthenticated (16)` | `grpcurl -plaintext -d '{"id": "..."}' localhost:50051 user.UserService/GetUser`                                                        | `ERROR: Code: Unauthenticated, Message: authorization token is not provided` |
+| **ไม่พบข้อมูล** | `NotFound (5)`         | `grpcurl -plaintext -H "authorization: Bearer $TOKEN" -d '{"id": "6aacb46c71edc7877f277dae"}' localhost:50051 user.UserService/GetUser` | `ERROR: Code: NotFound, Message: user not found`                             |
+| **รูปแบบ ID ผิด** | `InvalidArgument (3)`  | `grpcurl -plaintext -H "authorization: Bearer $TOKEN" -d '{"id": "invalid-id"}' localhost:50051 user.UserService/GetUser`               | `ERROR: Code: InvalidArgument, Message: invalid user id format`              |
+| **อีเมลซ้ำ**       | `AlreadyExists (6)`    | `grpcurl -plaintext -d '{"name": "...", "email": "somchai_grpc@example.com", ...}' localhost:50051 user.UserService/CreateUser`         | `ERROR: Code: AlreadyExists, Message: email already exists`                  |
 
 ---
 
@@ -597,11 +658,13 @@ Postman (v10 ขึ้นไป) รองรับการยิงคำข�
 ## ข้อเสนอการออกแบบระบบค้นหาสลาก (Lottery Search System Design)
 
 สำหรับข้อกำหนดส่วนที่ 2 (แบบร่างสถาปัตยกรรมระบบ ไม่มีการเขียนโค้ด):
+
 - รองรับข้อมูล **10,000,000 ใบ**
 - รองรับการค้นหา Wildcard Pattern เช่น `****23`, `1****5`, `123***`
 - รับประกันการไม่จัดสรรสลากใบเดียวกันให้ผู้ใช้หลายคนพร้อมกัน (**Zero Duplicate Allocation**) ด้วย Atomic Two-Phase Lease ผ่าน Redis Lua Script
 - การเลือกเทคโนโลยีฐานข้อมูลระดับ Production: Redis Cluster (In-Memory Search & Indexing) ร่วมกับ Partitioned PostgreSQL 16 (Transactional Audit Log)
 
 รายละเอียดการออกแบบทางสถาปัตยกรรมฉบับเต็ม:
+
 - **ฉบับภาษาไทย**: [LOTTERY_SEARCH_DESIGN_TH.md](LOTTERY_SEARCH_DESIGN_TH.md)
 - **English Version**: [LOTTERY_SEARCH_DESIGN.md](LOTTERY_SEARCH_DESIGN.md)
