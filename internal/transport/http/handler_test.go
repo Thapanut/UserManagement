@@ -108,4 +108,14 @@ func TestAuthRoutes_RegisterAndLogin(t *testing.T) {
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 Unauthorized without token, got %d", rr.Code)
 	}
+
+	// 5. ทดสอบเรียก Protected Route ด้วย Raw Token ตรงๆ โดยไม่มีคำว่า "Bearer " (Swagger UI support)
+	req, _ = http.NewRequest(http.MethodGet, "/api/v1/users", nil)
+	req.Header.Set("Authorization", res.Data.Token)
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for protected route with raw token, got %d", rr.Code)
+	}
 }

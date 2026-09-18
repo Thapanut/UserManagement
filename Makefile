@@ -1,4 +1,4 @@
-.PHONY: help build test run run-grpc docker-up docker-down clean proto
+.PHONY: help build test run run-grpc docker-up docker-down clean proto swagger
 
 help: ## แสดงคำสั่งที่สามารถใช้งานได้
 	@echo "Available commands:"
@@ -22,6 +22,9 @@ run-grpc: ## รัน gRPC Server ในเครื่อง Local
 
 proto: ## คอมไพล์ไฟล์ .proto
 	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative proto/user.proto
+
+swagger: ## เจนเนอเรตเอกสาร Swagger / OpenAPI
+	swag init -g cmd/api/main.go -o docs
 
 docker-up: ## สตาร์ท MongoDB และ API Server ด้วย Docker Compose
 	docker-compose up -d --build

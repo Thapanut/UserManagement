@@ -17,13 +17,13 @@ type MockUserRepository struct {
 	users map[primitive.ObjectID]*domain.User
 
 	// Hook functions สำหรับจำลองข้อผิดพลาดในการทดสอบ (Error Injection)
-	CreateFunc    func(ctx context.Context, user *domain.User) error
-	FindByIDFunc  func(ctx context.Context, id primitive.ObjectID) (*domain.User, error)
+	CreateFunc      func(ctx context.Context, user *domain.User) error
+	FindByIDFunc    func(ctx context.Context, id primitive.ObjectID) (*domain.User, error)
 	FindByEmailFunc func(ctx context.Context, email string) (*domain.User, error)
-	FindAllFunc   func(ctx context.Context) ([]*domain.User, error)
-	UpdateFunc    func(ctx context.Context, id primitive.ObjectID, name, email string) (*domain.User, error)
-	DeleteFunc    func(ctx context.Context, id primitive.ObjectID) error
-	CountFunc     func(ctx context.Context) (int64, error)
+	FindAllFunc     func(ctx context.Context) ([]*domain.User, error)
+	UpdateFunc      func(ctx context.Context, id primitive.ObjectID, name, email string) (*domain.User, error)
+	DeleteFunc      func(ctx context.Context, id primitive.ObjectID) error
+	CountFunc       func(ctx context.Context) (int64, error)
 }
 
 // NewMockUserRepository สร้าง Instance ใหม่ของ MockUserRepository

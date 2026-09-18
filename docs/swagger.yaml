@@ -1,0 +1,390 @@
+basePath: /api/v1
+definitions:
+  domain.User:
+    properties:
+      created_at:
+        type: string
+      email:
+        example: somchai@example.com
+        type: string
+      id:
+        example: 6aacb46c71edc7877f277dae
+        type: string
+      name:
+        example: Somchai Jaidee
+        type: string
+    type: object
+  http.StandardResponse:
+    properties:
+      data: {}
+      error:
+        type: string
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  service.CreateUserRequest:
+    properties:
+      email:
+        example: somchai@example.com
+        type: string
+      name:
+        example: Somchai Jaidee
+        type: string
+      password:
+        example: password123
+        type: string
+    type: object
+  service.LoginRequest:
+    properties:
+      email:
+        example: somchai@example.com
+        type: string
+      password:
+        example: password123
+        type: string
+    type: object
+  service.LoginResponse:
+    properties:
+      token:
+        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        type: string
+      user:
+        $ref: '#/definitions/domain.User'
+    type: object
+  service.RegisterRequest:
+    properties:
+      email:
+        example: somchai@example.com
+        type: string
+      name:
+        example: Somchai Jaidee
+        type: string
+      password:
+        example: password123
+        type: string
+    type: object
+  service.UpdateUserRequest:
+    properties:
+      email:
+        example: somchai.pro@example.com
+        type: string
+      name:
+        example: Somchai Pro
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    name: Thapanut
+  description: Backend Challenge User Management RESTful API with Hexagonal Architecture
+    & JWT Authentication.
+  license:
+    name: Apache 2.0
+  title: User Management API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: ตรวจสอบอีเมลและรหัสผ่านเพื่อสร้าง JWT Token (HS256)
+      parameters:
+      - description: ข้อมูลเข้าสู่ระบบ
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Login successful
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.StandardResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/service.LoginResponse'
+              type: object
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+        "401":
+          description: Invalid credentials
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+      summary: เข้าสู่ระบบเพื่อรับ JWT Token (User Login)
+      tags:
+      - Authentication
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: สร้างบัญชีผู้ใช้งานใหม่พร้อมแฮชรหัสผ่านด้วย bcrypt
+      parameters:
+      - description: ข้อมูลการลงทะเบียน
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User registered successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.StandardResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/domain.User'
+              type: object
+        "400":
+          description: Invalid request body or validation error
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+        "409":
+          description: Email already exists
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+      summary: สมัครสมาชิกผู้ใช้ใหม่ (User Registration)
+      tags:
+      - Authentication
+  /health:
+    get:
+      description: ส่งกลับสถานะการทำงานของเซิร์ฟเวอร์
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Server is healthy
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.StandardResponse'
+            - properties:
+                data:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+      summary: ตรวจสอบสถานะความพร้อมของระบบ (Health Check)
+      tags:
+      - System
+  /users:
+    get:
+      description: ดึงรายการผู้ใช้งานทั้งหมดในระบบ (Protected Endpoint)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Users retrieved successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.StandardResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/domain.User'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+      security:
+      - BearerAuth: []
+      summary: ดึงรายชื่อผู้ใช้ทั้งหมด (List Users)
+      tags:
+      - Users
+    post:
+      consumes:
+      - application/json
+      description: สร้างผู้ใช้ใหม่ในระบบ (Protected Endpoint)
+      parameters:
+      - description: ข้อมูลผู้ใช้ใหม่
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User created successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.StandardResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/domain.User'
+              type: object
+        "400":
+          description: Bad request or validation error
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+        "409":
+          description: Email already exists
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+      security:
+      - BearerAuth: []
+      summary: สร้างผู้ใช้ใหม่โดยตรง (Create User)
+      tags:
+      - Users
+  /users/{id}:
+    delete:
+      description: ลบผู้ใช้ออกจากระบบตาม ID (Protected Endpoint)
+      parameters:
+      - description: User ObjectID Hex String
+        example: '"6aacb46c71edc7877f277dae"'
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User deleted successfully
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+        "400":
+          description: Invalid ID format
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+      security:
+      - BearerAuth: []
+      summary: ลบผู้ใช้ (Delete User)
+      tags:
+      - Users
+    get:
+      description: ค้นหาข้อมูลผู้ใช้จาก MongoDB ObjectID Hex string (Protected Endpoint)
+      parameters:
+      - description: User ObjectID Hex String
+        example: '"6aacb46c71edc7877f277dae"'
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User retrieved successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.StandardResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/domain.User'
+              type: object
+        "400":
+          description: Invalid ID format
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+      security:
+      - BearerAuth: []
+      summary: ดึงข้อมูลผู้ใช้ตาม ID (Get User by ID)
+      tags:
+      - Users
+    put:
+      consumes:
+      - application/json
+      description: อัปเดตชื่อ และ/หรือ อีเมลของผู้ใช้ รองรับ Partial Update (Protected
+        Endpoint)
+      parameters:
+      - description: User ObjectID Hex String
+        example: '"6aacb46c71edc7877f277dae"'
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ฟิลด์ที่ต้องการอัปเดต
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.UpdateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User updated successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.StandardResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/domain.User'
+              type: object
+        "400":
+          description: Bad request or validation error
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+        "409":
+          description: Email already exists
+          schema:
+            $ref: '#/definitions/http.StandardResponse'
+      security:
+      - BearerAuth: []
+      summary: อัปเดตข้อมูลผู้ใช้ (Update User)
+      tags:
+      - Users
+securityDefinitions:
+  BearerAuth:
+    description: Enter your JWT token directly or with Bearer prefix (e.g. 'Bearer
+      <token>' or just '<token>').
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

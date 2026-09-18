@@ -246,7 +246,7 @@ func TestUpdateUser(t *testing.T) {
 		t.Fatalf("failed to register: %v", err)
 	}
 
-	// อัปเดตข้อมูลสำเร็จ
+	// 1. อัปเดตทั้งสองฟิลด์สำเร็จ
 	updated, err := svc.UpdateUser(ctx, created.ID.Hex(), service.UpdateUserRequest{
 		Name:  "New Name",
 		Email: "new@example.com",
@@ -258,9 +258,39 @@ func TestUpdateUser(t *testing.T) {
 		t.Errorf("updated fields mismatch: %+v", updated)
 	}
 
-	// ตรวจสอบความถูกต้องของอีเมลเมื่ออัปเดต
+	// 2. อัปเดตเฉพาะชื่ออย่างเดียว (Email ต้องคงเดิม)
+	updatedNameOnly, err := svc.UpdateUser(ctx, created.ID.Hex(), service.UpdateUserRequest{
+		Name: "Name Only Changed",
+	})
+	if err != nil {
+		t.Fatalf("expected name only update to succeed, got %v", err)
+	}
+	if updatedNameOnly.Name != "Name Only Changed" || updatedNameOnly.Email != "new@example.com" {
+		t.Errorf("expected email to remain unchanged, got: %+v", updatedNameOnly)
+	}
+
+	// 3. อัปเดตเฉพาะอีเมลอย่างเดียว (Name ต้องคงเดิม)
+	updatedEmailOnly, err := svc.UpdateUser(ctx, created.ID.Hex(), service.UpdateUserRequest{
+		Email: "emailonly@example.com",
+	})
+	if err != nil {
+		t.Fatalf("expected email only update to succeed, got %v", err)
+	}
+	if updatedEmailOnly.Name != "Name Only Changed" || updatedEmailOnly.Email != "emailonly@example.com" {
+		t.Errorf("expected name to remain unchanged, got: %+v", updatedEmailOnly)
+	}
+
+	// 4. ส่งค่าว่างทั้งคู่ (ต้อง Error)
 	_, err = svc.UpdateUser(ctx, created.ID.Hex(), service.UpdateUserRequest{
-		Name:  "New Name",
+		Name:  "",
+		Email: "",
+	})
+	if err == nil {
+		t.Error("expected error when neither name nor email is provided, got nil")
+	}
+
+	// 5. ตรวจสอบความถูกต้องของรูปแบบอีเมลเมื่ออัปเดต
+	_, err = svc.UpdateUser(ctx, created.ID.Hex(), service.UpdateUserRequest{
 		Email: "bad-email",
 	})
 	if err == nil {

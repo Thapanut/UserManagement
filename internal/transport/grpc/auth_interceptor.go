@@ -21,7 +21,12 @@ func AuthInterceptor(tokenManager *jwt.TokenManager) grpc.UnaryServerInterceptor
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (interface{}, error) {
-		// ดึง Metadata จาก context
+		// ข้ามการตรวจ Token สำหรับ CreateUser เพื่อให้ผู้ใช้ใหม่สามารถสมัครสมาชิกผ่าน gRPC ได้
+		if info.FullMethod == "/user.UserService/CreateUser" {
+			return handler(ctx, req)
+		}
+
+		// ดึง Metadata จาก context สำหรับ Endpoint ที่ต้องการการยืนยันตัวตน (เช่น GetUser)
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
 			return nil, status.Errorf(codes.Unauthenticated, "metadata is not provided")
@@ -32,13 +37,15 @@ func AuthInterceptor(tokenManager *jwt.TokenManager) grpc.UnaryServerInterceptor
 			return nil, status.Errorf(codes.Unauthenticated, "authorization token is not provided")
 		}
 
-		authHeader := values[0]
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			return nil, status.Errorf(codes.Unauthenticated, "invalid authorization token format")
+		authHeader := strings.TrimSpace(values[0])
+		tokenString := authHeader
+		if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+			tokenString = strings.TrimSpace(authHeader[7:])
 		}
 
-		tokenString := strings.TrimSpace(parts[1])
+		if tokenString == "" {
+			return nil, status.Errorf(codes.Unauthenticated, "authorization token is empty")
+		}
 		claims, err := tokenManager.ValidateToken(tokenString)
 		if err != nil {
 			return nil, status.Errorf(codes.Unauthenticated, "invalid or expired token: %v", err)

@@ -68,20 +68,23 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 func JWTMiddleware(tokenManager *jwt.TokenManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			authHeader := r.Header.Get("Authorization")
+			authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 			if authHeader == "" {
 				ErrorResponse(w, http.StatusUnauthorized, "authorization header required")
 				return
 			}
 
-			// รูปแบบที่คาดหวัง: "Bearer <token>"
-			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-				ErrorResponse(w, http.StatusUnauthorized, "invalid authorization header format. format should be 'Bearer <token>'")
+			// รองรับทั้ง "Bearer <token>" (RFC 6750) และการใส่ raw token โดยตรง (เช่น จาก Swagger UI หรือ API Client)
+			tokenString := authHeader
+			if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+				tokenString = strings.TrimSpace(authHeader[7:])
+			}
+
+			if tokenString == "" {
+				ErrorResponse(w, http.StatusUnauthorized, "authorization token is empty")
 				return
 			}
 
-			tokenString := strings.TrimSpace(parts[1])
 			claims, err := tokenManager.ValidateToken(tokenString)
 			if err != nil {
 				ErrorResponse(w, http.StatusUnauthorized, err.Error())
@@ -106,3 +109,23 @@ func GetUserIDFromContext(ctx context.Context) string {
 	}
 	return ""
 }
+
+// CORSMiddleware จัดการ Cross-Origin Resource Sharing (CORS) สำหรับ Frontend Web Apps, Postman, และ Swagger UI
+func CORSMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-CSRF-Token")
+		w.Header().Set("Access-Control-Expose-Headers", "Link")
+		w.Header().Set("Access-Control-Max-Age", "300")
+
+		// ตอบกลับทันทีหากเป็น Preflight Request (OPTIONS)
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+

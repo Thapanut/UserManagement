@@ -15,9 +15,9 @@ import (
 // - Password (hashed ด้วย bcrypt ไม่ส่งออกไปยัง JSON response)
 // - CreatedAt (timestamp วันที่สร้าง)
 type User struct {
-	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Name      string             `bson:"name" json:"name"`
-	Email     string             `bson:"email" json:"email"`
+	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id" swaggertype:"string" example:"6aacb46c71edc7877f277dae"`
+	Name      string             `bson:"name" json:"name" example:"Somchai Jaidee"`
+	Email     string             `bson:"email" json:"email" example:"somchai@example.com"`
 	Password  string             `bson:"password" json:"-"` // เครื่องหมาย "-" ซ่อนรหัสผ่านไม่ให้แสดงใน JSON response
 	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
 }

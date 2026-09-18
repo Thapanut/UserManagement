@@ -6,11 +6,20 @@ option go_package = "backend-challenge/proto/pb;pb";
 
 // UserService บริการ gRPC สำหรับจัดการผู้ใช้
 service UserService {
-  // CreateUser สร้างผู้ใช้ใหม่
+  // CreateUser สร้างผู้ใช้ใหม่ (Create)
   rpc CreateUser (CreateUserRequest) returns (UserResponse);
 
-  // GetUser ดึงข้อมูลผู้ใช้ตาม ID
+  // GetUser ดึงข้อมูลผู้ใช้ตาม ID (Read)
   rpc GetUser (GetUserRequest) returns (UserResponse);
+
+  // ListUsers ดึงรายชื่อผู้ใช้ทั้งหมด (Read All)
+  rpc ListUsers (ListUsersRequest) returns (ListUsersResponse);
+
+  // UpdateUser ปรับปรุงข้อมูลชื่อและ/หรืออีเมลของผู้ใช้ (Update)
+  rpc UpdateUser (UpdateUserRequest) returns (UserResponse);
+
+  // DeleteUser ลบผู้ใช้ตาม ID (Delete)
+  rpc DeleteUser (DeleteUserRequest) returns (DeleteUserResponse);
 }
 
 // CreateUserRequest คำขอสำหรับสร้างผู้ใช้ใหม่
@@ -23,6 +32,32 @@ message CreateUserRequest {
 // GetUserRequest คำขอสำหรับค้นหาผู้ใช้จาก ID
 message GetUserRequest {
   string id = 1;
+}
+
+// ListUsersRequest คำขอดึงรายชื่อผู้ใช้ทั้งหมด
+message ListUsersRequest {}
+
+// ListUsersResponse รายการผู้ใช้ทั้งหมด
+message ListUsersResponse {
+  repeated UserResponse users = 1;
+}
+
+// UpdateUserRequest คำขอปรับปรุงข้อมูลผู้ใช้
+message UpdateUserRequest {
+  string id = 1;
+  string name = 2;
+  string email = 3;
+}
+
+// DeleteUserRequest คำขอลบผู้ใช้ตาม ID
+message DeleteUserRequest {
+  string id = 1;
+}
+
+// DeleteUserResponse ผลลัพธ์การลบผู้ใช้
+message DeleteUserResponse {
+  bool success = 1;
+  string message = 2;
 }
 
 // UserResponse ข้อมูลผู้ใช้ที่ตอบกลับ (ไม่ส่ง password กลับเพื่อความปลอดภัย)

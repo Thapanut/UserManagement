@@ -15,34 +15,34 @@ import (
 
 // RegisterRequest ข้อมูลสำหรับการลงทะเบียนผู้ใช้ใหม่
 type RegisterRequest struct {
-	Name     string `json:"name"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Name     string `json:"name" example:"Somchai Jaidee"`
+	Email    string `json:"email" example:"somchai@example.com"`
+	Password string `json:"password" example:"password123"`
 }
 
 // LoginRequest ข้อมูลสำหรับการเข้าสู่ระบบ
 type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email    string `json:"email" example:"somchai@example.com"`
+	Password string `json:"password" example:"password123"`
 }
 
 // LoginResponse ผลลัพธ์จากการเข้าสู่ระบบสำเร็จ คืนค่า JWT Token
 type LoginResponse struct {
-	Token string       `json:"token"`
+	Token string       `json:"token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
 	User  *domain.User `json:"user"`
 }
 
 // CreateUserRequest ข้อมูลสำหรับการสร้างผู้ใช้
 type CreateUserRequest struct {
-	Name     string `json:"name"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Name     string `json:"name" example:"Somchai Jaidee"`
+	Email    string `json:"email" example:"somchai@example.com"`
+	Password string `json:"password" example:"password123"`
 }
 
 // UpdateUserRequest ข้อมูลสำหรับการอัปเดตชื่อหรืออีเมล
 type UpdateUserRequest struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
+	Name  string `json:"name" example:"Somchai Pro"`
+	Email string `json:"email" example:"somchai.pro@example.com"`
 }
 
 // UserService โครงสร้าง Business Logic Service
@@ -179,7 +179,7 @@ func (s *UserService) ListUsers(ctx context.Context) ([]*domain.User, error) {
 	return s.repo.FindAll(ctx)
 }
 
-// UpdateUser อัปเดตข้อมูล Name และ Email ของผู้ใช้
+// UpdateUser อัปเดตข้อมูล Name และ/หรือ Email ของผู้ใช้ (รองรับ Partial Update ตามโจทย์ "name or email")
 func (s *UserService) UpdateUser(ctx context.Context, idHex string, req UpdateUserRequest) (*domain.User, error) {
 	objID, err := primitive.ObjectIDFromHex(idHex)
 	if err != nil {
@@ -189,11 +189,29 @@ func (s *UserService) UpdateUser(ctx context.Context, idHex string, req UpdateUs
 	name := strings.TrimSpace(req.Name)
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 
-	if name == "" {
-		return nil, errors.New("name cannot be empty")
+	// ตรวจสอบว่ามีการส่งอย่างน้อย 1 ฟิลด์หรือไม่
+	if name == "" && email == "" {
+		return nil, errors.New("at least one field (name or email) must be provided for update")
 	}
-	if !validateEmail(email) {
-		return nil, errors.New("invalid email address format")
+
+	// ตรวจสอบว่าผู้ใช้มีอยู่จริงก่อนทำการอัปเดต
+	existingUser, err := s.repo.FindByID(ctx, objID)
+	if err != nil {
+		return nil, err
+	}
+
+	// หากไม่ได้ส่ง Name มา ให้ใช้ Name เดิมของผู้ใช้
+	if name == "" {
+		name = existingUser.Name
+	}
+
+	// หากไม่ได้ส่ง Email มา ให้ใช้ Email เดิมของผู้ใช้ แต่หากส่งมาให้ตรวจสอบ Format
+	if email == "" {
+		email = existingUser.Email
+	} else {
+		if !validateEmail(email) {
+			return nil, errors.New("invalid email address format")
+		}
 	}
 
 	return s.repo.Update(ctx, objID, name, email)
