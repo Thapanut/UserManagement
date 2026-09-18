@@ -37,6 +37,9 @@
 - **Graceful Shutdown**: ดักจับ OS Signals (`SIGINT`, `SIGTERM`) เพื่อคืน Resource, ปิด HTTP Listener, ตัดการเชื่อมต่อ MongoDB และหยุด Background Worker อย่างปลอดภัย
 - **gRPC Support**: จัดทำไฟล์ Protobuf (`proto/user.proto`) พร้อมพัฒนา gRPC Server รองรับการจัดการข้อมูลผู้ใช้ครบถ้วนตามหลัก CRUD (`CreateUser`, `GetUser`, `ListUsers`, `UpdateUser`, `DeleteUser`) ร่วมกับ Metadata Authentication Interceptor ป้องกันการเข้าถึงโดยไม่ได้รับอนุญาต
 - **API Documentation (Swagger UI)**: เอกสาร API มาตรฐาน OpenAPI 2.0 พร้อมหน้าเว็บ Swagger UI แบบ Interactive เข้าถึงได้ผ่าน Browser ที่ `http://localhost:8080/swagger` พร้อมปุ่ม Authorize สำหรับใส่ Bearer Token
+- **Web Dashboard (Mission Control UI)**: หน้าบ้าน Web Interface สำหรับบริหารจัดการผู้ใช้ เข้าใช้งานได้ทันทีที่ `http://localhost:8080/` โดยฝัง Assets ทั้งหมดไว้ใน Go Binary (`//go:embed`) ไม่ต้องติดตั้ง Node.js หรือเปิดพอร์ตเพิ่ม
+  - **ทำไมเบราว์เซอร์ถึงเชื่อมต่อผ่าน REST API แทน gRPC?**: Web Browser ทั่วไปไม่สามารถส่ง HTTP/2 gRPC Framing และ Trailers ได้โดยตรง (หากไม่มี Envoy gRPC-Web Proxy คั่น) ระบบจึงเชื่อมต่อผ่าน REST API (`/api/v1`) โดยสถาปัตยกรรม Hexagonal ของเราทำให้ทั้ง REST และ gRPC ใช้ Business Service และ Database เดียวกัน 100%
+  - **ฟังก์ชันบนหน้าเว็บ**: ตรวจสอบสถานะ Server Telemetry (HTTP, gRPC, MongoDB, Goroutine Worker 10s), เข้าสู่ระบบ/สมัครสมาชิก (JWT), จัดการผู้ใช้ CRUD ครบวงจร, และ Live cURL Inspector แบบเรียลไทม์
 
 ---
 
@@ -214,9 +217,30 @@ ok      backend-challenge/internal/transport/grpc
 --- PASS: TestHealthCheckRoute (0.00s)
 === RUN   TestAuthRoutes_RegisterAndLogin
 --- PASS: TestAuthRoutes_RegisterAndLogin (0.10s)
-PASS
-ok      backend-challenge/internal/transport/http
 ```
+
+---
+
+## หน้าเว็บสำหรับทดสอบระบบ (Web Dashboard - Mission Control)
+
+สำหรับผู้ตรวจหรือผู้ใช้งานที่ต้องการทดสอบการทำงานของระบบผ่าน User Interface สวยงาม ทันสมัย โดยไม่ต้องพิมพ์ cURL หรือใช้ Postman สามารถเปิดบราวเซอร์เข้าสู่หน้า **Mission Control Dashboard** ได้ทันทีที่:
+
+👉 **URL: [http://localhost:8080/](http://localhost:8080/)**
+
+### สถาปัตยกรรมการเชื่อมต่อ: ทำไม Web Frontend ถึงเชื่อมต่อผ่าน REST API แทน gRPC?
+
+- **ข้อจำกัดของ Web Browser**: เว็บบราวเซอร์มาตรฐาน (Chrome, Firefox, Safari) ทำงานบน Fetch API หรือ XMLHttpRequest ซึ่งไม่สามารถควบคุม HTTP/2 framing ระดับล่าง (Low-level HTTP/2 Frames และ Trailing Headers) ที่ native gRPC จำเป็นต้องใช้ได้ เว้นแต่จะต้องติดตั้ง Envoy Proxy ทำหน้าที่เป็น gRPC-Web Translator คั่นกลาง
+- **การนำ Hexagonal Architecture มาประยุกต์ใช้**: ด้วยการออกแบบโครงสร้างแบบ Hexagonal (Ports & Adapters) ของโปรเจกต์นี้ ทำให้:
+  - **REST API Adapter (`/api/v1`)** และ **gRPC Adapter (`:50051`)** เรียกใช้งาน `UserService` และ `UserRepository` เดียวกัน 100%
+  - เมื่อ Web Frontend ยิงผ่าน REST API ผลลัพธ์และการทำงานทั้งหมดในระดับ Business Logic, Password Hashing, และ MongoDB จะเหมือนกับการเรียกผ่าน gRPC ทุกประการ
+- **ความสะดวกในการใช้งาน**: ไฟล์ HTML, CSS และ JavaScript ทั้งหมดถูกคอมไพล์ฝังลงใน Go Binary ผ่าน `//go:embed` โดยตรง ทำให้ผู้ใช้งานสามารถรันเพียงคำสั่ง `docker-compose up` ก็เปิดหน้าเว็บได้ทันที โดยไม่ต้องลง Node.js หรือเปิด Port เพิ่มเติม
+
+### ฟีเจอร์หลักบน Web Dashboard:
+1. **Live System Telemetry**: แถบแสดงสถานะเรียลไทม์ของ REST API (`:8080`), gRPC (`:50051`), MongoDB (`Connected`) และ Concurrency Goroutine Worker (`10s Interval`)
+2. **Interactive Authentication**: สลับแท็บ Sign In / Sign Up ได้ทันที เมื่อเข้าสู่ระบบแล้ว ระบบจะจัดเก็บ JWT Token ลงใน LocalStorage และแนบ Header `Authorization: Bearer <token>` ให้อัตโนมัติ
+3. **User Directory CRUD**: ค้นหารายชื่อผู้ใช้, เพิ่มผู้ใช้ใหม่ (New User), แก้ไขข้อมูล (Edit), และลบผู้ใช้ (Delete พร้อม Confirmation Dialog)
+4. **Live Request Inspector**: แสดงคำขอ HTTP ล่าสุด พร้อมแถบสถานะ (Status Code, Latency) และปุ่มกดคัดลอกคำสั่ง `curl` เทียบเท่าเพื่อนำไปใช้ใน Terminal ได้ทันที
+5. **Direct Swagger Link**: ปุ่มทางลัดเปิด Swagger Documentation (`/swagger`) ได้จาก Header ทันที
 
 ---
 

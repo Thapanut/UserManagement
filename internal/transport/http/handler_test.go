@@ -119,3 +119,64 @@ func TestAuthRoutes_RegisterAndLogin(t *testing.T) {
 		t.Fatalf("expected 200 OK for protected route with raw token, got %d", rr.Code)
 	}
 }
+
+// TestWebDashboardRoutes ทดสอบการให้บริการไฟล์ Static ของ Web Dashboard
+func TestWebDashboardRoutes(t *testing.T) {
+	router, _ := setupTestRouter()
+
+	testCases := []struct {
+		name         string
+		path         string
+		expectedCode int
+		containsText string
+	}{
+		{
+			name:         "Serve Index HTML on root",
+			path:         "/",
+			expectedCode: http.StatusOK,
+			containsText: "MISSION CONTROL",
+		},
+		{
+			name:         "Serve CSS stylesheet",
+			path:         "/css/style.css",
+			expectedCode: http.StatusOK,
+			containsText: "--bg-void",
+		},
+		{
+			name:         "Serve JavaScript bundle",
+			path:         "/js/app.js",
+			expectedCode: http.StatusOK,
+			containsText: "apiCall",
+		},
+		{
+			name:         "Redirect /swagger to /swagger/index.html",
+			path:         "/swagger",
+			expectedCode: http.StatusMovedPermanently,
+			containsText: "/swagger/index.html",
+		},
+		{
+			name:         "Serve Swagger UI html",
+			path:         "/swagger/index.html",
+			expectedCode: http.StatusOK,
+			containsText: "swagger-ui",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req, _ := http.NewRequest(http.MethodGet, tc.path, nil)
+			req.RequestURI = tc.path
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			if rr.Code != tc.expectedCode {
+				t.Fatalf("expected status %d for %s, got %d", tc.expectedCode, tc.path, rr.Code)
+			}
+
+			if !bytes.Contains(rr.Body.Bytes(), []byte(tc.containsText)) {
+				t.Fatalf("expected response body for %s to contain %q", tc.path, tc.containsText)
+			}
+		})
+	}
+}
+

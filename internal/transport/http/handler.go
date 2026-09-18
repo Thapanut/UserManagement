@@ -1,8 +1,10 @@
 package http
 
 import (
+	"embed"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net/http"
 
 	_ "backend-challenge/docs"
@@ -13,6 +15,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
+
+//go:embed web
+var webFS embed.FS
 
 // UserHandler โครงสร้างจัดการ HTTP Requests สำหรับ User และ Authentication
 type UserHandler struct {
@@ -61,6 +66,15 @@ func (h *UserHandler) RegisterRoutes(r chi.Router) {
 			})
 		})
 	})
+
+	// Web Dashboard Static Files (HTML, CSS, JS)
+	if subFS, err := fs.Sub(webFS, "web"); err == nil {
+		fileServer := http.FileServer(http.FS(subFS))
+		r.Get("/", fileServer.ServeHTTP)
+		r.Get("/index.html", fileServer.ServeHTTP)
+		r.Get("/css/*", fileServer.ServeHTTP)
+		r.Get("/js/*", fileServer.ServeHTTP)
+	}
 }
 
 // HealthCheck godoc

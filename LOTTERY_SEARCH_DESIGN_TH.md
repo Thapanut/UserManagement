@@ -72,20 +72,22 @@
 ดังนั้น ขนาดของ Search Space ทั้งหมดจึงมีเพียง:
 $$\text{จำนวน Index Buckets ทั้งหมด} = 6 \text{ ตำแหน่ง} \times 10 \text{ ตัวเลข} = 60 \text{ กลุ่มบิตเซ็ต (Bitmaps)}$$
 
-ใน Redis เราจะสร้าง Roaring Bitmap / Bitset ไว้ทั้งหมด 60 ตัว:
-- `pos:0:digit:0` ... `pos:0:digit:9` (หลักที่ 1 เป็นเลข 0 ถึง 9)
-- `pos:1:digit:0` ... `pos:1:digit:9` (หลักที่ 2 เป็นเลข 0 ถึง 9)
+ใน Redis เราจะสร้าง Roaring Bitmap / Bitset ไว้ทั้งหมด 60 ตัว โดยระบุ `draw_id` (งวดสลาก) และครอบด้วย **Hash Tag** `{draw123}` เพื่อให้ Redis Cluster การันตีว่าคีย์ทั้งหมดของงวดเดียวกันจะอยู่บน Slot และ Node เดียวกันเสมอ (จำเป็นสำหรับการใช้ `BITOP` และ `SINTER` ที่ห้ามทำข้าม Node):
+- `pos:{draw123}:0:digit:0` ... `pos:{draw123}:0:digit:9` (หลักที่ 1 เป็นเลข 0 ถึง 9)
+- `pos:{draw123}:1:digit:0` ... `pos:{draw123}:1:digit:9` (หลักที่ 2 เป็นเลข 0 ถึง 9)
 - ...
-- `pos:5:digit:0` ... `pos:5:digit:9` (หลักที่ 6 เป็นเลข 0 ถึง 9)
+- `pos:{draw123}:5:digit:0` ... `pos:{draw123}:5:digit:9` (หลักที่ 6 เป็นเลข 0 ถึง 9)
 
 และมี Bitmap พิเศษอีก 1 ตัวสำหรับเก็บสถานะพร้อมขาย:
-- `tickets:available` (เก็บบิตสถานะของสลากทั้ง 10 ล้านใบ)
+- `tickets:{draw123}:available` (เก็บบิตสถานะของสลากทั้ง 10 ล้านใบ $\approx$ **1.25 Megabytes** เท่านั้น!)
+
+เนื่องจากทุกคีย์ในงวดเดียวกันใช้ Hash Tag เดียวกัน `{draw123}` ทำให้คำสั่ง Bitwise ระหว่างคีย์สามารถทำงานบน Node เดียวกันได้อย่างสมบูรณ์ ส่วนการ Scale รองรับโหลดมหาศาลจะทำโดยการกระจาย *คนละงวด (Different Draws)* ไปยัง *คนละ Node/Slot* ใน Redis Cluster
 
 #### ตัวอย่างการจับคู่คำค้นหา (Pattern Matching Example):
-หากผู้ใช้ค้นหาคำว่า `1****5`:
-1. หลักที่ 0 ต้องเป็น `1` $\rightarrow$ ดึงบิตเซ็ต `pos:0:digit:1`
-2. หลักที่ 5 ต้องเป็น `5` $\rightarrow$ ดึงบิตเซ็ต `pos:5:digit:5`
-3. ต้องเป็นสลากที่ยังว่างอยู่ $\rightarrow$ ดึงบิตเซ็ต `tickets:available`
+หากผู้ใช้ค้นหาคำว่า `1****5` ในงวด `draw123`:
+1. หลักที่ 0 ต้องเป็น `1` $\rightarrow$ ดึงบิตเซ็ต `pos:{draw123}:0:digit:1`
+2. หลักที่ 5 ต้องเป็น `5` $\rightarrow$ ดึงบิตเซ็ต `pos:{draw123}:5:digit:5`
+3. ต้องเป็นสลากที่ยังว่างอยู่ $\rightarrow$ ดึงบิตเซ็ต `tickets:{draw123}:available`
 4. ทำการหาจุดตัด (Intersection) ด้วยคำสั่งระดับฮาร์ดแวร์ **Bitwise AND (`BITOP AND`)**:
    $$\text{ผลลัพธ์} = \text{pos:0:1} \cap \text{pos:5:5} \cap \text{tickets:available}$$
 
@@ -114,6 +116,7 @@ sequenceDiagram
     actor UserB as ผู้ใช้ B
     participant API as Lottery Search API
     participant Redis as Redis Cluster (Lua Script)
+    participant Reaper as Reconciliation Worker
     participant PG as PostgreSQL
 
     UserA->>API: ค้นหา "****23" (ขอ 5 ใบ)
@@ -123,24 +126,61 @@ sequenceDiagram
     API->>Redis: รัน Lua Script: ค้นหาและล็อค (User B, 5 ใบ, หมดอายุใน 60 วิ)
 
     Note over Redis: Redis ทำงานแบบ Single-Threaded Atomic การันตีไม่มี Race Condition
+    Note over Redis: บันทึก Lease ลง leases:{draw_id}:expirations (ZSET) ควบคู่ไปด้วย
     Redis-->>API: คืนสลากชุดที่ 1 [000023, 000123, 000223, ...] ให้ผู้ใช้ A
     Note over Redis: สลากชุดที่ 1 ถูกปลดบิตออกจาก tickets:available ทันที
-    Redis-->>API: คืนสลากชุดที่ 2 [000323, 000423, 000523, ...] ให้ผู้ใช้ B (ไม่ซ้ำกับ A!)
+    Redis-->>API: คืนสลากชุดที่ 2 [000523, 000623, 000723, ...] ให้ผู้ใช้ B (ไม่ซ้ำกับ A!)
 
     API-->>UserA: แสดงผลสลาก 5 ใบ (มีเวลาชำระเงิน 60 วินาที)
     API-->>UserB: แสดงผลสลาก 5 ใบ (มีเวลาชำระเงิน 60 วินาที)
+
+    loop ตรวจสอบทุกๆ 1 วินาที
+        Reaper->>Redis: ZRANGEBYSCORE leases:{draw_id}:expirations -inf now
+        Reaper->>Redis: ปลดล็อคสลากหมดอายุ (คืนบิต, ลบ lease, ZREMRANGEBYSCORE)
+    end
+
+    UserA->>API: POST /api/v1/tickets/release (ยกเลิกก่อนหมด TTL)
+    API->>Redis: คืนสลากของ User A เข้าคลังทันที (ใช้ Lua Script เดียวกัน)
 ```
 
 #### การทำงานภายใน Lua Script:
-1. **Bitwise AND**: หา ID ของสลากที่ตรงตามเงื่อนไขและยังมีสถานะว่างอยู่ใน `tickets:available`
-2. **Scan & Pick**: ดึง Ticket ID ตามจำนวน $N$ ใบที่ขอมา
+1. **Bitwise AND**: หา ID ของสลากที่ตรงตามเงื่อนไขและยังมีสถานะว่างอยู่ใน `tickets:{draw_id}:available` ไปยังคีย์ชั่วคราว
+2. **การจัดสรรอย่างเป็นธรรม (Fair Selection - Randomized Offset)**: แทนที่จะเลือก $N$ บิตแรกเสมอ (ซึ่งจะทำให้คนที่ค้นหาก่อนได้แต่เลขชุดต่ำๆ เสมอ และเกิด Low-ID Bias) ตัวสคริปต์จะทำการ**สุ่มจุดเริ่มต้น (Random Starting Bit Offset)** ในบิตแมป แล้วกวาดไปข้างหน้าแบบหมุนวน (Wrap-around) ด้วยคำสั่ง `BITPOS` เพื่อรวบรวม $N$ บิตแรกที่พบจากจุดสุ่มนั้น ทำให้ความเร็วคงเดิมที่ $O(N)$ แต่กระจายเลขสลากให้ผู้ใช้อย่างทั่วถึงและเป็นธรรม
 3. **Atomic State Transition**:
-   - ปลดบิตของสลากที่เลือกออกจาก `tickets:available` ทันที (คำค้นหาอื่นถัดไปจะไม่มีทางเจอสลากกลุ่มนี้อีก)
-   - บันทึกการจอง `lease:<ticket_id>` $\rightarrow$ `{user_id, expire_at}` พร้อมตั้งเวลาหมดอายุ (TTL = 60 วินาที)
+   - ปลดบิตของสลากที่เลือกออกจาก `tickets:{draw_id}:available` ทันที (คำค้นหาอื่นถัดไปจะไม่มีทางเจอสลากกลุ่มนี้อีก)
+   - บันทึกการจอง `lease:<ticket_id>` $\rightarrow$ `{user_id, expires_at}` พร้อมตั้งเวลาหมดอายุ (TTL = 60 วินาที)
    - เพิ่มรายการสลากเข้าไปในตะกร้าชั่วคราวของผู้ใช้ `user:<user_id>:held_tickets`
-4. **การปล่อยคืนอัตโนมัติ (Auto-Rollback)**:
-   - หากผู้ใช้ไม่กดยืนยันชำระเงินภายใน 60 วินาที Redis Expiration Event หรือ Background Janitor จะทำการคืนบิตกลับเข้าสู่ `tickets:available` ทันที
-   - หากผู้ใช้ชำระเงินสำเร็จ ระบบจะบันทึกลง PostgreSQL และเปลี่ยนสถานะใน Redis เป็น `SOLD` ถาวร
+4. **การปล่อยคืนสต็อกอัตโนมัติ (Expiration / Auto-Rollback ผ่าน Reliable ZSET Reaper)**:
+   - การพึ่งพาเพียง **Redis Keyspace Notifications** (`EXPIRE` + Pub/Sub) นั้น **ไม่ปลอดภัยสำหรับระดับ Production**: เนื่องจาก Pub/Sub ของ Redis เป็นการส่งแบบ **at-most-once** หากการเชื่อมต่อหลุด มี Network Blip หรือ Worker กำลัง Restart ในจังหวะที่คีย์หมดอายุ Event "key expired" จะสูญหายไปทันทีโดยไม่มีการส่งซ้ำ ไม่มีคิว และไม่มี ACK ส่งผลให้บิตของสลากไม่ถูกปลดคืน และ**สลากจะค้างอยู่ในสถานะจองตลอดกาล (Stuck Reservation)** ทำให้สต็อกสินค้าค่อยๆ หายไปจากระบบอย่างเงียบๆ
+   - ระบบจึงแก้ไขโดยให้ทุกการจองบันทึกข้อมูลเพิ่มลงใน **Redis Sorted Set (ZSET)** ชื่อ `leases:{draw_id}:expirations` โดยมี **Member** คือ `ticket_id` และ **Score** คือ `expiration_unix_timestamp` (ZSET เป็นข้อมูลถาวรใน Redis ไม่ใช่ Event ลอยๆ ข้อมูลจึงไม่สูญหายแม้ Worker จะออฟไลน์)
+   - มี **Background Reconciliation Worker** ขนาดเบาคอยดึงข้อมูลจาก ZSET นี้ทุกๆ **1 วินาที**:
+     1. `ZRANGEBYSCORE leases:{draw_id}:expirations -inf <now>` เพื่อดึงรายการสลากทั้งหมดที่หมดเวลาแล้ว
+     2. รันคำสั่ง Lua Script แบบ Atomic เพื่อปรับบิตกลับเป็น `1` ใน `tickets:{draw_id}:available`, ลบ Hash `lease:<ticket_id>` และลบออกจาก `user:<user_id>:held_tickets`
+     3. `ZREMRANGEBYSCORE leases:{draw_id}:expirations -inf <now>` เพื่อล้างรายการที่ปลดล็อคแล้วออกจาก ZSET
+   - การโพลล์และสแกนจาก ZSET ซ้ำแบบนี้ ทำให้แม้ Worker จะ Crash, Restart หรือเจอ GC Pause ในรอบถัดไปก็จะหยิบรายการที่ค้างอยู่มาปลดล็อคต่อได้ทันที **การันตีการ Rollback คืนสต็อก 100% โดยไม่มีสลากหลุดหาย (Zero Inventory Leakage)**
+   - หากผู้ใช้ชำระเงินสำเร็จก่อนหมดอายุ PostgreSQL จะบันทึกการขาย รายการจะถูกลบออกจาก ZSET ทันที (Reaper จะไม่มายุ่ง) และเซ็ตสถานะใน Redis เป็น `SOLD` อย่างถาวร
+
+#### Explicit Release API (การแก้ปัญหาของค้างสต็อก - Inventory Starvation Mitigation)
+การต้องรอจนครบ 60 วินาทีทุกครั้งที่ผู้ใช้ค้นหาดูเล่นๆ แล้วปิดแอปหรือกดยกเลิก เป็นการเสียโอกาสในการขายอย่างมาก เพราะสลากจะถูกกักไว้ 1 นาทีเต็มโดยไม่มีใครซื้อ และผู้ใช้คนอื่นค้นหาก็จะไม่เจอสลากนั้น
+
+ระบบจึงมี Endpoint สำหรับปลดล็อคคืนสต็อกทันที:
+
+```http
+POST /api/v1/tickets/release
+{
+  "user_id": "UserA_ID",
+  "ticket_ids": ["000023", "000123", "000223"]
+}
+```
+
+- เรียกใช้อัตโนมัติจากฝั่ง Client เมื่อผู้ใช้ปิดหน้าผลการค้นหา, กดยกเลิก, หรือเปลี่ยนหน้า (ผ่าน `beforeunload` หรือ Route-change Hook)
+- ทำงานผ่าน Lua Script ปลดล็อคตัวเดียวกับ Reconciliation Worker (คืนบิตใน `tickets:{draw_id}:available`, ลบ Hash `lease:<ticket_id>`, ลบออกจาก `user:<user_id>:held_tickets` และลบออกจาก ZSET) ทำให้การคืนสิทธิ์เสร็จสิ้นภายในระดับมิลลิวินาที สลากกลับมาพร้อมขายให้คนอื่นได้ทันที
+
+#### ความคงทนของข้อมูลและการสร้างดัชนีใหม่ (Redis Durability & Cold-Start Rebuild)
+ในระบบนี้ Redis ทำหน้าที่เป็น **Derived, Rebuildable Index** (ดัชนีที่สร้างใหม่ได้เสมอ) ไม่ใช่ Source of Truth หลัก โดย PostgreSQL คือ Source of Truth ที่แท้จริง:
+- เปิดใช้งาน **Redis AOF Persistence** (`appendfsync everysec`) ควบคู่กับ RDB Snapshot เพื่อให้ข้อมูลส่วนใหญ่รอดพ้นการรีสตาร์ทตามปกติ
+- ในกรณี Cold Start (เปิดระบบใหม่ หรือ Redis ว่างเปล่า) จะมี **Bootstrap Job** ที่อ่านข้อมูลจาก PostgreSQL (`SELECT id, number FROM tickets WHERE status = 'AVAILABLE'`) แล้วสร้างบิตแมป 60 ตัวและ `tickets:{draw_id}:available` ขึ้นมาใหม่ทั้งหมด ซึ่งสแกน 10 ล้านเรคคอร์ดเสร็จสิ้นภายในไม่กี่วินาที
+- รายการจองชั่วคราว (`lease:<ticket_id>`) จะถูกบันทึกสถานะ `RESERVED` ลงในตาราง PostgreSQL ไว้ด้วย ทำให้สถานะการจองไม่สูญหายแม้ Redis จะดับกะทันหันระหว่างที่ผู้ใช้กำลังกรอกข้อมูลชำระเงิน
 
 ---
 
@@ -148,8 +188,9 @@ sequenceDiagram
 
 | เลเยอร์ฐานข้อมูล | เทคโนโลยีที่เลือก | เหตุผลความเหมาะสมในการใช้งานจริง |
 | --- | --- | --- |
-| **In-Memory & Real-time Index** | **Redis Cluster / AWS ElastiCache** | - **เร็วที่สุดในโลก**: ทำคำสั่งระดับบิต (Bitwise AND) ได้ในระดับ Sub-millisecond<br>- **Atomicity**: การรันผ่าน Lua Script ป้องกัน Race Condition ได้ 100% โดยไม่ต้องใช้ระบบ Distributed Lock ที่ซับซ้อน<br>- **ประหยัดต้นทุน**: ข้อมูล 10 ล้านใบใช้ RAM ต่ำกว่า 100 MB |
+| **In-Memory & Real-time Index** | **Redis Enterprise / AWS ElastiCache (Sharded per-draw via Hash Tags)** | - **เร็วที่สุดในโลก**: ทำคำสั่งระดับบิต (Bitwise AND) ได้ในระดับ Sub-millisecond<br>- **Atomicity**: การรันผ่าน Lua Script ป้องกัน Race Condition ได้ 100% โดยไม่ต้องใช้ระบบ Distributed Lock ที่ซับซ้อน<br>- **ประหยัดต้นทุน**: ข้อมูล 10 ล้านใบใช้ RAM ต่ำกว่า 100 MB<br>- **Cluster-safe sharding**: คีย์ทั้งหมด 60+1 คีย์ในแต่ละงวดใช้ Hash Tag `{draw_id}` เดียวกัน ทำให้คำสั่ง `BITOP` และ Lua Script ทำงานบนโหนดเดียวกันได้อย่างสมบูรณ์ และสามารถกระจายแต่ละงวดไปยังคนละโหนดเพื่อ Scale แนวนอน |
 | **Primary Persistent Storage** | **PostgreSQL 16 (Partitioned Table)** | - **ACID Compliance**: ข้อมูลการเงินและสลากต้องมีความถูกต้องสูง ไม่สูญหาย<br>- **Declarative Partitioning**: แบ่งพาร์ติชันตามงวดสลาก (`PARTITION BY RANGE (draw_date)`) ทำให้ Query ประวัติและงวดเก่าได้อย่างรวดเร็ว<br>- **Optimistic Locking**: ตรวจสอบซ้ำด้วยเงื่อนไข `WHERE status = 'RESERVED' AND id = ...` ในจังหวะตัดเงิน ป้องกันข้อผิดพลาดซ้ำสอง |
+| **Search / Analytics (Auxiliary)** | **Elasticsearch / OpenSearch** | - รองรับการค้นหา Metadata ข้อความขั้นสูงในอนาคต (เช่น ค้นหาตามชื่อชุดสลาก, ที่ตั้งแผงสลาก, ข้อมูลตัวแทนจำหน่าย) |
 
 ---
 
@@ -169,7 +210,9 @@ sequenceDiagram
 
 ### 7.2 ความสามารถในการขยายระบบ (Scalability)
 1. **การขยายขนาดข้อมูล**: หากเพิ่มเป็น 50 ล้าน หรือ 100 ล้านใบ ดัชนีจะใช้ RAM เพิ่มเป็น ~700 MB ซึ่งเครื่อง Server ขนาดเล็กทั่วไปก็ยังสามารถรองรับได้อย่างสบาย
-2. **การขยายรองรับผู้ใช้งาน (Horizontal Scaling)**: ทำ Sharding แยกตาม `draw_id` (งวดที่ออกสลาก) หรือแบ่งช่วงเลข ทำให้สามารถ Scale โหนดของ Redis และ API ได้แบบไม่จำกัด
+2. **ขีดจำกัด CPU บน Bitwise AND**: CPU สมัยใหม่ประมวลผลคำสั่ง SIMD 64-bit ถึง 256-bit ได้พร้อมกัน การทำ AND บนข้อมูล 1.2 MB ใน C-code ของ Redis ใช้เวลาเพียงประมาณ 0.2 มิลลิวินาที
+3. **การขยายรองรับผู้ใช้งาน (Horizontal Scaling)**: ทำ Sharding แยกตาม `draw_id` (งวดที่ออกสลาก) โดยทุกคีย์ในงวดเดียวกันใช้ Hash Tag `{draw_id}` ทำให้กระจายคนละงวดไปอยู่คนละ Node ใน Redis Cluster ได้โดยไม่ต้องรัน `BITOP` ข้ามโหนด
+4. **ความคงที่ของเวลาค้นหา (Match-Count Independence)**: เพราะต้นทุนการประมวลผลคือการ Bitwise AND บนขนาดบิตแมปที่คงที่ ทำให้เวลาที่ใช้ในการค้นหาจะ**คงที่อยู่ที่ประมาณ ~1-2 มิลลิวินาทีเสมอ** ไม่ว่าคำค้นหานั้นจะจับคู่เจอสลากเพียง 2 ใบ หรือเจอสลากถึง 200,000 ใบ ซึ่งได้เปรียบกว่าการสแกน Index ในฐานข้อมูลทั่วไปที่เวลาประมวลผลจะวิ่งแปรผันตามจำนวนผลลัพธ์ที่พบ
 
 ---
 
