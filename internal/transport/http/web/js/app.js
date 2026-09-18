@@ -284,8 +284,40 @@
     }, 1000);
   }
 
+  // --- Guest State for Protected Directory ---
+  function renderGuestState() {
+    el.metricTotalUsers.textContent = '—';
+    el.usersTbody.innerHTML = `
+      <tr>
+        <td colspan="5" class="empty-state">
+          <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--bg-charcoal); border: var(--border-hairline); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px; color: var(--accent-blue);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          </div>
+          <div style="font-weight: 500; font-size: 0.95rem; margin-bottom: 6px; color: #ffffff;">Protected User Directory</div>
+          <p style="font-size: 0.82rem; margin-bottom: 16px; color: var(--text-secondary); max-width: 400px; margin-left: auto; margin-right: auto; line-height: 1.5;">
+            Authentication required to access user records. Sign in with an existing account or register a new account to view and manage users.
+          </p>
+          <button class="nav-btn primary" id="btn-guest-signin">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+            <span>Sign In / Register</span>
+          </button>
+        </td>
+      </tr>
+    `;
+
+    const btn = document.getElementById('btn-guest-signin');
+    if (btn) {
+      btn.addEventListener('click', () => openModal(el.modalAuth));
+    }
+  }
+
   // --- User Directory Operations ---
   async function loadUsers() {
+    if (!state.token) {
+      renderGuestState();
+      return;
+    }
+
     el.usersTbody.innerHTML = `
       <tr>
         <td colspan="5" class="empty-state">
@@ -303,22 +335,15 @@
       el.metricTotalUsers.textContent = state.users.length.toString();
       renderUsersTable(state.users);
     } catch (err) {
-      el.metricTotalUsers.textContent = '-';
-      if (err.message && (err.message.toLowerCase().includes('token') || err.message.toLowerCase().includes('unauthorized') || err.message.includes('401'))) {
-        el.usersTbody.innerHTML = `
-          <tr>
-            <td colspan="5" class="empty-state">
-              <div style="margin-bottom: 8px; color: var(--accent-amber);">Authentication Required (401 Unauthorized)</div>
-              <p style="font-size: 0.8rem; margin-bottom: 12px; color: var(--text-secondary);">The User Directory is protected by JWTMiddleware. Please Sign In with your credentials or register a new user.</p>
-              <button class="nav-btn primary" onclick="document.getElementById('modal-auth').showModal()">Sign In Now</button>
-            </td>
-          </tr>
-        `;
+      el.metricTotalUsers.textContent = '—';
+      const msg = (err.message || '').toLowerCase();
+      if (msg.includes('token') || msg.includes('unauthorized') || msg.includes('authorization') || msg.includes('401')) {
+        renderGuestState();
       } else {
         el.usersTbody.innerHTML = `
           <tr>
             <td colspan="5" class="empty-state" style="color: var(--accent-coral);">
-              <div>Error fetching users: ${escapeHtml(err.message)}</div>
+              <div>Error connecting to service: ${escapeHtml(err.message)}</div>
               <button class="nav-btn ghost" style="margin-top: 10px;" id="btn-retry-load">Retry</button>
             </td>
           </tr>
@@ -420,6 +445,7 @@
 
   // --- Filter / Search ---
   el.inputSearch.addEventListener('input', (e) => {
+    if (!state.token) return;
     const q = e.target.value.toLowerCase().trim();
     if (!q) {
       renderUsersTable(state.users);
@@ -436,6 +462,11 @@
 
   // --- Refresh Button ---
   el.btnRefresh.addEventListener('click', () => {
+    if (!state.token) {
+      showToast('Please sign in first to access the user directory.', 'info');
+      openModal(el.modalAuth);
+      return;
+    }
     loadUsers();
     showToast('Refreshed user directory.', 'info');
   });
@@ -734,10 +765,20 @@
   }
 
   // --- Initialization ---
-  function init() {
+  async function init() {
     updateSessionUI();
     initGoroutineTicker();
-    loadUsers();
+
+    if (state.token) {
+      loadUsers();
+    } else {
+      renderGuestState();
+      try {
+        await apiCall('/health');
+      } catch (e) {
+        // silent
+      }
+    }
   }
 
   // Run when DOM is ready
