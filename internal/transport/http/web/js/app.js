@@ -75,8 +75,26 @@
     deleteUserId: document.getElementById('delete-user-id'),
     btnConfirmDelete: document.getElementById('btn-confirm-delete'),
 
+    authAlert: document.getElementById('auth-alert'),
+    createUserAlert: document.getElementById('create-user-alert'),
+    editUserAlert: document.getElementById('edit-user-alert'),
+
     toastContainer: document.getElementById('toast-container'),
   };
+
+  // --- Alert Helper ---
+  function setAlert(elem, message, type = 'error') {
+    if (!elem) return;
+    if (!message) {
+      elem.style.display = 'none';
+      elem.textContent = '';
+      elem.className = 'modal-alert';
+      return;
+    }
+    elem.className = `modal-alert ${type}`;
+    elem.textContent = message;
+    elem.style.display = 'flex';
+  }
 
   // --- API Client & Telemetry Inspector Helper ---
   async function apiCall(endpoint, options = {}) {
@@ -279,13 +297,14 @@
 
     try {
       const data = await apiCall('/api/v1/users');
-      // Backend returns either an array of users or null
-      state.users = Array.isArray(data) ? data : [];
+      // Backend returns StandardResponse: { success: true, data: [...], message: "..." }
+      const userList = (data && Array.isArray(data.data)) ? data.data : (Array.isArray(data) ? data : []);
+      state.users = userList;
       el.metricTotalUsers.textContent = state.users.length.toString();
       renderUsersTable(state.users);
     } catch (err) {
       el.metricTotalUsers.textContent = '-';
-      if (err.message && err.message.toLowerCase().includes('token')) {
+      if (err.message && (err.message.toLowerCase().includes('token') || err.message.toLowerCase().includes('unauthorized') || err.message.includes('401'))) {
         el.usersTbody.innerHTML = `
           <tr>
             <td colspan="5" class="empty-state">
@@ -377,6 +396,7 @@
         el.editName.value = name;
         el.editEmail.value = email;
 
+        setAlert(el.editUserAlert, '');
         openModal(el.modalEditUser);
       });
     });
@@ -426,6 +446,7 @@
     el.tabRegister.classList.remove('active');
     el.formLogin.classList.add('active');
     el.formRegister.classList.remove('active');
+    setAlert(el.authAlert, '');
   });
 
   el.tabRegister.addEventListener('click', () => {
@@ -433,6 +454,7 @@
     el.tabLogin.classList.remove('active');
     el.formRegister.classList.add('active');
     el.formLogin.classList.remove('active');
+    setAlert(el.authAlert, '');
   });
 
   // --- Login Form Submission ---
@@ -444,6 +466,7 @@
     const submitBtn = el.formLogin.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<span>Signing In...</span>';
+    setAlert(el.authAlert, '');
 
     try {
       const data = await apiCall('/api/v1/auth/login', {
@@ -451,21 +474,30 @@
         body: JSON.stringify({ email, password }),
       });
 
-      if (data && data.token) {
-        state.token = data.token;
+      // Extract token from either data.data.token or data.token
+      const token = (data && data.data && data.data.token) || (data && data.token);
+
+      if (token) {
+        state.token = token;
         state.userEmail = email;
-        localStorage.setItem('mc_jwt_token', data.token);
+        localStorage.setItem('mc_jwt_token', token);
         localStorage.setItem('mc_user_email', email);
 
-        closeModal(el.modalAuth);
+        setAlert(el.authAlert, 'Sign in successful! Entering dashboard...', 'success');
         updateSessionUI();
-        showToast('Signed in successfully.', 'success');
+        showToast(`Signed in successfully as ${email}`, 'success');
         el.loginPassword.value = '';
-        loadUsers();
+
+        setTimeout(() => {
+          closeModal(el.modalAuth);
+          setAlert(el.authAlert, '');
+          loadUsers();
+        }, 350);
       } else {
-        throw new Error('No token returned from server');
+        throw new Error((data && data.error) || (data && data.message) || 'No token returned from server');
       }
     } catch (err) {
+      setAlert(el.authAlert, err.message, 'error');
       showToast(err.message, 'error');
     } finally {
       submitBtn.disabled = false;
@@ -483,6 +515,7 @@
     const submitBtn = el.formRegister.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<span>Creating Account...</span>';
+    setAlert(el.authAlert, '');
 
     try {
       await apiCall('/api/v1/auth/register', {
@@ -490,6 +523,7 @@
         body: JSON.stringify({ name, email, password }),
       });
 
+      setAlert(el.authAlert, 'Account registered! Signing in automatically...', 'success');
       showToast('Account registered! Automatically signing in...', 'success');
 
       // Auto login with new credentials
@@ -498,18 +532,32 @@
         body: JSON.stringify({ email, password }),
       });
 
-      if (loginData && loginData.token) {
-        state.token = loginData.token;
+      const token = (loginData && loginData.data && loginData.data.token) || (loginData && loginData.token);
+
+      if (token) {
+        state.token = token;
         state.userEmail = email;
-        localStorage.setItem('mc_jwt_token', loginData.token);
+        localStorage.setItem('mc_jwt_token', token);
         localStorage.setItem('mc_user_email', email);
 
-        closeModal(el.modalAuth);
         updateSessionUI();
+        showToast(`Welcome, ${name}! Signed in successfully.`, 'success');
         el.regPassword.value = '';
-        loadUsers();
+
+        setTimeout(() => {
+          closeModal(el.modalAuth);
+          setAlert(el.authAlert, '');
+          loadUsers();
+        }, 350);
+      } else {
+        setAlert(el.authAlert, 'Registered successfully! Please Sign In.', 'success');
+        setTimeout(() => {
+          el.tabLogin.click();
+          el.loginEmail.value = email;
+        }, 800);
       }
     } catch (err) {
+      setAlert(el.authAlert, err.message, 'error');
       showToast(err.message, 'error');
     } finally {
       submitBtn.disabled = false;
@@ -521,10 +569,12 @@
   el.btnCreateUser.addEventListener('click', () => {
     if (!state.token) {
       showToast('Please sign in first to create users.', 'error');
+      setAlert(el.authAlert, 'Please sign in first to manage users.', 'error');
       openModal(el.modalAuth);
       return;
     }
     el.formCreateUser.reset();
+    setAlert(el.createUserAlert, '');
     openModal(el.modalCreateUser);
   });
 
@@ -537,6 +587,7 @@
     const submitBtn = el.formCreateUser.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
     submitBtn.textContent = 'Saving...';
+    setAlert(el.createUserAlert, '');
 
     try {
       await apiCall('/api/v1/users', {
@@ -544,10 +595,16 @@
         body: JSON.stringify({ name, email, password }),
       });
 
-      closeModal(el.modalCreateUser);
+      setAlert(el.createUserAlert, `User ${name} created successfully!`, 'success');
       showToast(`User ${name} created successfully!`, 'success');
-      loadUsers();
+
+      setTimeout(() => {
+        closeModal(el.modalCreateUser);
+        setAlert(el.createUserAlert, '');
+        loadUsers();
+      }, 350);
     } catch (err) {
+      setAlert(el.createUserAlert, err.message, 'error');
       showToast(err.message, 'error');
     } finally {
       submitBtn.disabled = false;
@@ -575,6 +632,7 @@
     const submitBtn = el.formEditUser.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
     submitBtn.textContent = 'Saving...';
+    setAlert(el.editUserAlert, '');
 
     try {
       await apiCall(`/api/v1/users/${id}`, {
@@ -582,10 +640,16 @@
         body: JSON.stringify(payload),
       });
 
-      closeModal(el.modalEditUser);
+      setAlert(el.editUserAlert, 'User record updated successfully!', 'success');
       showToast('User record updated.', 'success');
-      loadUsers();
+
+      setTimeout(() => {
+        closeModal(el.modalEditUser);
+        setAlert(el.editUserAlert, '');
+        loadUsers();
+      }, 350);
     } catch (err) {
+      setAlert(el.editUserAlert, err.message, 'error');
       showToast(err.message, 'error');
     } finally {
       submitBtn.disabled = false;

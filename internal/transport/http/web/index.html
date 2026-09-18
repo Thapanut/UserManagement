@@ -213,6 +213,7 @@
         </div>
         <button class="modal-close" data-close="modal-auth">&times;</button>
       </div>
+      <div id="auth-alert" class="modal-alert" style="display: none;"></div>
 
       <!-- Login Form -->
       <form id="form-login" class="modal-form active">
@@ -266,6 +267,7 @@
         <h3 class="modal-title">Create New User</h3>
         <button class="modal-close" data-close="modal-create-user">&times;</button>
       </div>
+      <div id="create-user-alert" class="modal-alert" style="display: none;"></div>
       <form id="form-create-user" class="modal-form active">
         <p class="form-desc">Creates a user record via protected <code>POST /api/v1/users</code> endpoint.</p>
         <div class="form-group">
@@ -298,6 +300,7 @@
         <h3 class="modal-title">Update User</h3>
         <button class="modal-close" data-close="modal-edit-user">&times;</button>
       </div>
+      <div id="edit-user-alert" class="modal-alert" style="display: none;"></div>
       <form id="form-edit-user" class="modal-form active">
         <p class="form-desc">Supports partial updates (name only, email only, or both).</p>
         <input type="hidden" id="edit-user-id">
