@@ -1,162 +1,404 @@
-# Backend Golang Coding Test
+# Backend Challenge: User Management API & Lottery Search System
 
-## Overview
+โปรเจกต์นี้จัดทำขึ้นสำหรับ Backend Golang Coding Test ประกอบด้วย 2 ส่วนหลัก:
 
-This coding test has two parts.
+1. **User Management API**: RESTful API และ gRPC Service ที่เขียนด้วย Go (Golang), ใช้ MongoDB ในการจัดเก็บข้อมูล, ระบบพิสูจน์ตัวตนด้วย JWT (HS256), สถาปัตยกรรม Hexagonal Architecture, Background Concurrency Task, และชุด Unit Tests ครบถ้วน
+2. **Lottery Search System**: ข้อเสนอการออกแบบสถาปัตยกรรมระบบค้นหาและจัดสรรสลาก 10 ล้านใบ ด้วย Wildcard Pattern Matching แบบ Real-time ป้องกันการได้เลขซ้ำพร้อมกันในระดับ Concurrency (ดูรายละเอียดฉบับเต็มได้ที่ [LOTTERY_SEARCH_DESIGN.md](LOTTERY_SEARCH_DESIGN.md))
 
-| Section | Focus | Submission Type |
-| --- | --- | --- |
-| User Management API | Build a Golang user management API with MongoDB and JWT authentication | Code implementation |
-| Lottery Search System | Design a real-world lottery ticket search solution with wildcard matching | Design proposal only (no code) |
+---
 
-## User Management API
+## 🌟 ฟีเจอร์ที่พัฒนา (Features Implemented)
 
-### Objective (User Management API)
+### User Management API (Part 1)
 
-Build a RESTful API in Golang to manage users, using MongoDB for persistence, JWT for authentication, and clean code practices.
+- [X] **User Entity Model**: กำหนดโครงสร้างผู้ใช้ครบถ้วน (`ID`, `Name`, `Email`, `Password` แบบ Bcrypt Hash, `CreatedAt`)
+- [X] **Authentication & Security**:
+  - สมัครสมาชิก (Register) พร้อมตรวจสอบความถูกต้องของข้อมูล (Input Validation) และป้องกัน Email ซ้ำ
+  - เข้าสู่ระบบ (Login) ตรวจสอบ Password Hash และออก JWT Token (HMAC-SHA256 / `HS256`)
+  - Middleware ตรวจสอบ JWT และดึง Claims เข้าสู่ Request Context
+- [X] **CRUD Operations**:
+  - `POST /api/v1/users` (สร้างผู้ใช้)
+  - `GET /api/v1/users` (ดึงรายชื่อผู้ใช้ทั้งหมด)
+  - `GET /api/v1/users/{id}` (ค้นหาผู้ใช้ตาม ObjectID)
+  - `PUT /api/v1/users/{id}` (แก้ไขชื่อและอีเมล)
+  - `DELETE /api/v1/users/{id}` (ลบผู้ใช้)
+- [X] **MongoDB Integration**: เชื่อมต่อผ่าน Official Go MongoDB Driver พร้อมสร้าง Unique Index บน Email
+- [X] **Logging Middleware**: ดักจับและบันทึก HTTP Method, URL Path, Status Code, IP, และ Execution Time ทุก Request
+- [X] **Concurrency Task**: Background Goroutine ตรวจสอบและบันทึกจำนวนผู้ใช้ทั้งหมดในฐานข้อมูลทุกๆ 10 วินาที พร้อมรองรับ Context Cancellation
+- [X] **Unit Testing & Mocking**: เขียนเทสด้วย standard `testing` package ของ Go โดยใช้ In-memory Mock Repository ไม่ต้องต่อ Database จริง (ครอบคลุมทั้ง Service Layer และ HTTP Handler Layer)
 
-### Requirements (User Management API)
+### Bonus Features (ครบทุกข้อตาม README)
 
-#### 1. User Model
+- [X] **Containerization**: มี `Dockerfile` แบบ Multi-stage และ `docker-compose.yml` รองรับการรัน API คู่กับ MongoDB แบบ 1-Command
+- [X] **Abstraction & Hexagonal Architecture**: แยก Layer ชัดเจน (Domain, Repository, Service, Transport) ผ่าน Go Interfaces
+- [X] **Input Validation**: ตรวจสอบ RFC 5322 Email Format, ความยาวรหัสผ่าน, และ Required Fields
+- [X] **Graceful Shutdown**: ดักจับ OS Signals (`SIGINT`, `SIGTERM`) เพื่อปิด HTTP Server, Disconnect MongoDB และหยุด Goroutine อย่างปลอดภัย
+- [X] **gRPC Support**: มีไฟล์ `proto/user.proto`, มี gRPC Server สำหรับ `CreateUser` และ `GetUser` พร้อม Secure Token Metadata Interceptor
 
-Define a user entity with the following fields:
+---
 
-- `ID` (auto-generated)
-- `Name` (string)
-- `Email` (string, unique)
-- `Password` (hashed)
-- `CreatedAt` (timestamp)
+## 📁 โครงสร้างโปรเจกต์ (Project Structure)
 
-#### 2. Authentication
+```
+├── cmd/
+│   ├── api/
+│   │   └── main.go                # REST API Entry point & Background worker
+│   └── grpc/
+│       └── main.go                # gRPC Server Entry point (Bonus)
+├── internal/
+│   ├── config/
+│   │   └── config.go              # โหลด Environment Variables
+│   ├── domain/
+│   │   ├── user.go                # Entity & Repository Interface (Ports)
+│   │   └── errors.go              # Domain Error definitions
+│   ├── pkg/
+│   │   ├── hasher/
+│   │   │   └── hasher.go          # Bcrypt hashing utilities
+│   │   └── jwt/
+│   │       └── jwt.go             # JWT Token Generator & Validator (HS256)
+│   ├── repository/
+│   │   ├── mongodb/
+│   │   │   └── user_repo.go       # MongoDB Adapter (Official Driver)
+│   │   └── mock/
+│   │       └── user_repo_mock.go  # In-memory Mock Repository สำหรับ Unit Tests
+│   ├── service/
+│   │   ├── user_service.go        # Business Logic Use Cases
+│   │   └── user_service_test.go   # Unit Tests สำหรับ Service
+│   ├── transport/
+│   │   ├── http/
+│   │   │   ├── handler.go         # REST API Handlers
+│   │   │   ├── handler_test.go    # HTTP Integration/Unit Tests
+│   │   │   ├── middleware.go      # Logging & JWT Auth Middlewares
+│   │   │   └── response.go        # Unified JSON Response format
+│   │   └── grpc/
+│   │       ├── server.go          # gRPC Service Implementation
+│   │       └── auth_interceptor.go # gRPC Metadata Token Interceptor
+│   └── worker/
+│       └── counter.go             # 10s Concurrency Background Goroutine
+├── proto/
+│   ├── user.proto                 # Protobuf definitions
+│   ├── user.pb.go                 # Generated Protobuf Go code
+│   └── user_grpc.pb.go            # Generated gRPC Go code
+├── Dockerfile                     # Multi-stage Docker build
+├── docker-compose.yml             # Docker Compose orchestration
+├── Makefile                       # คำสั่งลัด (build, test, run, docker-up)
+├── LOTTERY_SEARCH_DESIGN.md       # เอกสารข้อเสนอการออกแบบระบบสลาก 10 ล้านใบ (Part 2)
+└── README.md                      # เอกสารแนะนำการใช้งานฉบับนี้
+```
 
-Implement:
+---
 
-- User registration
-- User authentication that returns a JWT token
+## 🚀 วิธีการติดตั้งและรันระบบ (Setup & Execution)
 
-JWT requirements:
+### ทางเลือกที่ 1: รันผ่าน Docker Compose (แนะนำ สะดวกที่สุด)
 
-- Protect endpoints with JWT
-- Validate tokens via middleware
-- Sign tokens using HMAC (`HS256`) with a secret key
+เพียงติดตั้ง Docker และรันคำสั่ง:
 
-#### 3. User Operations
+```bash
+docker-compose up -d --build
+```
 
-Implement the following operations:
+ระบบจะเปิด:
 
-- Create a new user
-- Fetch a user by ID
-- List all users
-- Update a user's name or email
-- Delete a user
+- [ ] **MongoDB**: `localhost:27017`
+- [ ] **User Management API**: `http://localhost:8080`
 
-#### 4. MongoDB Integration
+ตรวจสอบสถานะการทำงาน:
 
-- Use the official Go MongoDB driver
-- Persist and retrieve user data from MongoDB
+```bash
+docker-compose logs -f api
+```
 
-#### 5. Middleware
+หยุดการทำงาน:
 
-- Implement logging middleware to capture HTTP method, path, and execution time
+```bash
+docker-compose down
+```
 
-#### 6. Concurrency Task
+---
 
-- Run a background goroutine every 10 seconds to log the total number of users in the database
+### ทางเลือกที่ 2: รันในเครื่อง Local (Local Machine)
 
-#### 7. Testing
+#### สิ่งที่จำเป็น (Prerequisites):
 
-- Write unit tests using Go's standard `testing` package
-- Mock MongoDB interactions where appropriate
+- Go 1.24+
+- MongoDB รันอยู่ที่ `mongodb://localhost:27017` (หรือรัน `docker run -d -p 27017:27017 --name local-mongo mongo:7.0`)
 
-### Bonus (Optional, User Management API)
+#### 1. รัน REST API Server:
 
-- **Containerization**: Add Docker and `docker-compose` support for the API and MongoDB
-- **Abstraction**: Use Go interfaces to abstract MongoDB operations for better testability
-- **Validation**: Implement input validation (for example, required fields and email format)
-- **Graceful Shutdown**: Handle system signals using `context.Context`
-- **gRPC Support**:
-  - Define a `.proto` file for `CreateUser` and `GetUser`
-  - Implement a gRPC server (optionally secure with token metadata)
-- **Hexagonal Architecture**:
-  - Structure the project using ports and adapters
-  - Separate domain, application, and infrastructure layers
-  - Decouple business logic from frameworks and drivers
+```bash
+go run ./cmd/api
+```
 
-### Deliverables (User Management API)
+หรือใช้ Makefile:
 
-Provide a Git repository containing:
+```bash
+make run
+```
 
-- `README.md` with setup and execution instructions
-- A guide explaining how to generate and use JWT tokens
-- Sample API requests and responses
-- Documentation of assumptions or design decisions
+#### 2. รัน gRPC Server (Bonus):
 
-### Evaluation Criteria (User Management API)
+```bash
+go run ./cmd/grpc
+# หรือ make run-grpc
+```
 
-- Code quality, structure, and readability
-- Correctness and completeness of the REST API
-- Security and implementation of JWT
-- Proper usage and abstraction of MongoDB
-- Test coverage and effective mocking
-- Idiomatic Go usage
-- Bonus implementations (gRPC, Docker, validation, architecture)
+---
 
-## Lottery Search System
+## 🧪 การรัน Unit Tests
 
-### Objective (Lottery Search System)
+โปรเจกต์นี้มีชุดทดสอบครอบคลุมทั้ง Unit Tests และ Transport Handler Tests พร้อมตรวจจับ Data Race ด้วย:
 
-Design a real-world solution to search a large dataset of lottery tickets using pattern matching with wildcard support.
+```bash
+go test -v -race ./...
+```
 
-> This section is a design exercise. Do not implement code.
+หรือรันผ่าน Makefile:
 
-### Requirements (Lottery Search System)
+```bash
+make test
+```
 
-#### 1. Data Volume
+---
 
-- Handle a dataset of **10 million** lottery tickets
-- Each ticket is a 6-digit number
+## 🔑 คู่มือการใช้งาน JWT Token (JWT Guide)
 
-#### 2. Search Pattern
+### 1. วิธีการทำงานและการสร้าง Token
 
-- Support a 6-character search pattern containing digits and wildcards (`*`)
-- Example patterns:
+- Token ถูกสร้างขึ้นเมื่อผู้ใช้ทำการเข้าสู่ระบบสำเร็จผ่าน `POST /api/v1/auth/login`
+- ใช้ Algorithm **HMAC-SHA256 (`HS256`)** พร้อมลงนามด้วย Secret Key (กำหนดผ่าน Environment Variable `JWT_SECRET`)
+- ข้อมูลใน Payload (Claims) ประกอบด้วย:
+  - `user_id`: MongoDB ObjectID ในรูปแบบ Hex string
+  - `email`: อีเมลของผู้ใช้
+  - `exp`: วันหมดอายุ (ค่าเริ่มต้นคือ 24 ชั่วโมง)
+  - `iat`: วันที่ออก Token
+  - `iss`: ผู้ออก Token (`backend-challenge-api`)
 
-| Pattern | Matches |
-| --- | --- |
-| `****23` | Numbers ending in `23` |
-| `1****5` | Numbers starting with `1` and ending with `5` |
-| `123***` | Numbers starting with `123` |
+### 2. วิธีการนำ Token ไปใช้งานใน Protected Endpoints
 
-#### 3. Result Distribution
+ให้นำ Token ที่ได้รับจากการ Login ไปใส่ใน HTTP Request Header:
 
-- Constraint: the same search pattern should not return the same ticket to multiple users at the same time
-- Propose a distribution mechanism so matching tickets are assigned without duplicate simultaneous selection
+```http
+Authorization: Bearer <your_jwt_token_here>
+```
 
-#### 4. Performance
+หากไม่มี Token หรือ Token หมดอายุ/ไม่ถูกต้อง ระบบจะส่ง HTTP 401 Unauthorized กลับมาทันที
 
-- Ensure the search is performant for `10M+` records
-- Propose an efficient approach for querying and allocation
+---
 
-#### 5. Real-World Design Proposal (No Code Required)
+## 📡 ตัวอย่าง API Requests & Responses (Sample API Calls)
 
-- Recommend the database/storage technology you would use in production and explain why
-- Describe the algorithm and indexing strategy used for wildcard pattern matching
-- Explain how you would prevent duplicate simultaneous results for the same pattern (for example, locking, reservation, or atomic allocation)
-- No code implementation is required; provide a solution/design only
+### 1. Health Check
 
-### Deliverables (Lottery Search System)
+```bash
+curl -s http://localhost:8080/health | jq
+```
 
-Submit a design document only (no code implementation) that includes:
+**Response (200 OK):**
 
-- Proposed solution architecture, data structures, and algorithms
-- Recommended production database/storage choice with justification (for example, query performance, concurrency handling, operational simplicity)
-- Performance analysis summarizing efficiency and tradeoffs
-- Concurrency/distribution strategy explaining how duplicate results are avoided for the same pattern
+```json
+{
+  "success": true,
+  "data": {
+    "status": "UP"
+  },
+  "message": "server is healthy"
+}
+```
 
-### Evaluation Criteria (Lottery Search System)
+---
 
-- Feasibility: the solution addresses the stated requirements
-- Performance: the search approach is efficient for the target scale
-- Correctness: the distribution constraint is handled correctly
-- Real-world practicality: the database/storage and concurrency approach are appropriate for production use
-- Creativity: thoughtful use of data structures and algorithms
+### 2. สมัครสมาชิกใหม่ (User Registration)
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Somchai Jaidee",
+    "email": "somchai@example.com",
+    "password": "password123"
+  }' | jq
+```
+
+**Response (201 Created):**
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "67da34fb879a957c129486c0",
+    "name": "Somchai Jaidee",
+    "email": "somchai@example.com",
+    "created_at": "2026-09-17T02:30:00Z"
+  },
+  "message": "user registered successfully"
+}
+```
+
+---
+
+### 3. เข้าสู่ระบบ (User Login) เพื่อรับ JWT Token
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "somchai@example.com",
+    "password": "password123"
+  }' | jq
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "user": {
+      "id": "67da34fb879a957c129486c0",
+      "name": "Somchai Jaidee",
+      "email": "somchai@example.com",
+      "created_at": "2026-09-17T02:30:00Z"
+    }
+  },
+  "message": "login successful"
+}
+```
+
+> **ทริค**: เก็บ Token ไว้ในตัวแปร Shell:
+>
+> ```bash
+> TOKEN="<token_ที่ได้จาก_response>"
+> ```
+
+---
+
+### 4. ดึงรายชื่อผู้ใช้ทั้งหมด (List Users) [Protected]
+
+```bash
+curl -s -X GET http://localhost:8080/api/v1/users \
+  -H "Authorization: Bearer $TOKEN" | jq
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "67da34fb879a957c129486c0",
+      "name": "Somchai Jaidee",
+      "email": "somchai@example.com",
+      "created_at": "2026-09-17T02:30:00Z"
+    }
+  ],
+  "message": "users retrieved successfully"
+}
+```
+
+---
+
+### 5. ค้นหาผู้ใช้ตาม ID (Get User by ID) [Protected]
+
+```bash
+curl -s -X GET http://localhost:8080/api/v1/users/67da34fb879a957c129486c0 \
+  -H "Authorization: Bearer $TOKEN" | jq
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "67da34fb879a957c129486c0",
+    "name": "Somchai Jaidee",
+    "email": "somchai@example.com",
+    "created_at": "2026-09-17T02:30:00Z"
+  },
+  "message": "user retrieved successfully"
+}
+```
+
+---
+
+### 6. อัปเดตข้อมูลผู้ใช้ (Update User) [Protected]
+
+```bash
+curl -s -X PUT http://localhost:8080/api/v1/users/67da34fb879a957c129486c0 \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Somchai Update",
+    "email": "somchai.new@example.com"
+  }' | jq
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "67da34fb879a957c129486c0",
+    "name": "Somchai Update",
+    "email": "somchai.new@example.com",
+    "created_at": "2026-09-17T02:30:00Z"
+  },
+  "message": "user updated successfully"
+}
+```
+
+---
+
+### 7. ลบผู้ใช้ (Delete User) [Protected]
+
+```bash
+curl -s -X DELETE http://localhost:8080/api/v1/users/67da34fb879a957c129486c0 \
+  -H "Authorization: Bearer $TOKEN" | jq
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true,
+  "data": null,
+  "message": "user deleted successfully"
+}
+```
+
+---
+
+## ⚙️ การตัดสินใจเชิงสถาปัตยกรรม (Design Decisions & Assumptions)
+
+1. **Hexagonal Architecture (Ports and Adapters)**:
+   - แกนกลาง (Domain) ไม่มี dependency ผูกติดกับ Database หรือ Framework ภายนอก
+   - `domain.UserRepository` เป็น Interface (Port) และ `mongodb.MongoUserRepository` เป็น Implementation (Adapter)
+   - ทำให้สามารถสลับฐานข้อมูล หรือจำลอง Mock สำหรับ Unit Test ได้ 100% โดยไม่ต้องพึ่ง external service
+2. **ความปลอดภัยของรหัสผ่าน (Password Security)**:
+   - แฮชรหัสผ่านด้วย `bcrypt` (Default Cost 10) ที่มี Salt ฝังในตัว ป้องกันการโจมตีแบบ Rainbow Table
+   - ซ่อนฟิลด์รหัสผ่านใน JSON Response เสมอด้วย Tag `json:"-"`
+3. **ความเสถียรของ Database**:
+   - สร้าง Unique Index บนฟิลด์ `email` ตั้งแต่จังหวะเริ่มต้นทำงาน เพื่อรับประกันความไม่ซ้ำกันของข้อมูลแม้จะเกิด Race Condition ระดับแอปพลิเคชัน
+4. **Concurrency Background Task**:
+   - รันใน Goroutine แยกและใช้ `time.Ticker` ความถี่ 10 วินาทีตาม Requirement 6
+   - ผูก `context.Context` เพื่อให้หยุดทำงานทันทีที่มีสัญญาณ Graceful Shutdown ไม่เกิด Goroutine Leak
+5. **การจัดการ Graceful Shutdown**:
+   - จัดการตัดการเชื่อมต่อแบบเป็นลำดับ: หยุดรับ Request ใหม่ $\rightarrow$ ยกเลิก Background Worker $\rightarrow$ ปิดการเชื่อมต่อ MongoDB
+
+---
+
+## 🎟️ ส่วนที่ 2: ระบบค้นหาสลาก (Lottery Search System Design)
+
+สำหรับข้อกำหนดส่วนที่ 2 (แบบร่างสถาปัตยกรรมระดับระบบ ไม่เขียนโค้ด):
+
+- รองรับข้อมูล **10 ล้านใบ**
+- รองรับการค้นหา Wildcard Pattern เช่น `****23`, `1****5`, `123***`
+- **ระบบป้องกันการส่งเลขเดียวกันให้ผู้ใช้หลายคนพร้อมกัน** (Zero Double Allocation) ผ่าน Atomic Redis Lua Two-Phase Lease
+- การเลือก Database ที่เหมาะสมในระดับ Production (Redis Cluster + Partitioned PostgreSQL 16)
+
+👉 **อ่านรายละเอียดการออกแบบทางสถาปัตยกรรมอย่างละเอียดได้ที่:**
+**[LOTTERY_SEARCH_DESIGN.md](LOTTERY_SEARCH_DESIGN.md)**

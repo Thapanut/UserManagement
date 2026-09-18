@@ -1,0 +1,52 @@
+services:
+  # ==========================================
+  # MongoDB Database Service
+  # ==========================================
+  mongodb:
+    image: mongo:7.0
+    container_name: backend_challenge_mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - app_network
+
+  # ==========================================
+  # Golang User Management API Service
+  # ==========================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backend_challenge_api
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - MONGO_URI=mongodb://mongodb:27017
+      - DB_NAME=user_management_db
+      - JWT_SECRET=super-secret-key-change-in-production-12345
+      - JWT_EXPIRATION_HOURS=24
+      - USER_COUNT_INTERVAL_SECONDS=10
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - app_network
+
+volumes:
+  mongo_data:
+    driver: local
+
+networks:
+  app_network:
+    driver: bridge

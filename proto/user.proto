@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package user;
+
+option go_package = "backend-challenge/proto/pb;pb";
+
+// UserService บริการ gRPC สำหรับจัดการผู้ใช้
+service UserService {
+  // CreateUser สร้างผู้ใช้ใหม่
+  rpc CreateUser (CreateUserRequest) returns (UserResponse);
+
+  // GetUser ดึงข้อมูลผู้ใช้ตาม ID
+  rpc GetUser (GetUserRequest) returns (UserResponse);
+}
+
+// CreateUserRequest คำขอสำหรับสร้างผู้ใช้ใหม่
+message CreateUserRequest {
+  string name = 1;
+  string email = 2;
+  string password = 3;
+}
+
+// GetUserRequest คำขอสำหรับค้นหาผู้ใช้จาก ID
+message GetUserRequest {
+  string id = 1;
+}
+
+// UserResponse ข้อมูลผู้ใช้ที่ตอบกลับ (ไม่ส่ง password กลับเพื่อความปลอดภัย)
+message UserResponse {
+  string id = 1;
+  string name = 2;
+  string email = 3;
+  string created_at = 4;
+}
